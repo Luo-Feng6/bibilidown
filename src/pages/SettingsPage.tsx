@@ -365,13 +365,9 @@ export default function SettingsPage() {
           hint={Object.entries(FILENAME_HINT).map(([k, v]) => `${k}=${v}`).join('  ')}
           info="自定义下载文件名。可用变量：\n{title} — 视频标题\n{bvid} — BV 号\n{quality} — 清晰度（如 1080P60）\n{up} — UP 主名称\n{date} — 当前日期（YYYY-MM-DD）\n{time} — 当前时间（HHMMSS）\n{format} — 输出格式（MP4 / M4A）\n{mode} — 下载模式（仅视频 / 仅音频）\n\n示例：{up}_{title}_{quality}_{date}"
         >
-          <input
+          <FilenameTemplateInput
             value={prefs.filenameTemplate}
-            onChange={(e) => prefs.setFilenameTemplate(e.target.value)}
-            placeholder="{title}_{quality}"
-            style={{ width: '160px', height: '32px', padding: '0 8px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-default)', backgroundColor: 'var(--surface-default)', color: 'var(--text-primary)', fontSize: 'var(--text-body-sm)', outline: 'none' }}
-            onFocus={(e) => { e.currentTarget.style.borderColor = 'var(--color-accent)' }}
-            onBlur={(e) => { e.currentTarget.style.borderColor = 'var(--border-default)' }}
+            onChange={(v) => prefs.setFilenameTemplate(v)}
           />
         </SettingRow>
 
@@ -525,6 +521,106 @@ export default function SettingsPage() {
           </div>
         )}
       </Section>
+    </div>
+  )
+}
+
+/* ── 文件名模板输入（带变量插入按钮） ── */
+
+const FILENAME_VARS = [
+  { key: '{title}',   label: '标题' },
+  { key: '{bvid}',    label: 'BV号' },
+  { key: '{quality}', label: '清晰度' },
+  { key: '{up}',      label: 'UP主' },
+  { key: '{date}',    label: '日期' },
+  { key: '{time}',    label: '时间' },
+  { key: '{format}',  label: '格式' },
+  { key: '{mode}',    label: '模式' },
+]
+
+function FilenameTemplateInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const inputRef = useRef<HTMLInputElement>(null)
+  const [showVars, setShowVars] = useState(false)
+  const containerRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!showVars) return
+    const h = (e: MouseEvent) => { if (containerRef.current && !containerRef.current.contains(e.target as Node)) setShowVars(false) }
+    document.addEventListener('mousedown', h)
+    return () => document.removeEventListener('mousedown', h)
+  }, [showVars])
+
+  const insertVar = (vkey: string) => {
+    const el = inputRef.current
+    if (!el) {
+      onChange(value + vkey)
+      return
+    }
+    const start = el.selectionStart ?? value.length
+    const end = el.selectionEnd ?? value.length
+    const newVal = value.slice(0, start) + vkey + value.slice(end)
+    onChange(newVal)
+    // restore cursor after React re-render
+    requestAnimationFrame(() => {
+      el.focus()
+      const pos = start + vkey.length
+      el.setSelectionRange(pos, pos)
+    })
+  }
+
+  return (
+    <div ref={containerRef} style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: '4px' }}>
+      <input
+        ref={inputRef}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder="{title}_{quality}"
+        style={{ width: '180px', height: '32px', padding: '0 8px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-default)', backgroundColor: 'var(--surface-default)', color: 'var(--text-primary)', fontSize: 'var(--text-body-sm)', outline: 'none', fontFamily: 'inherit' }}
+        onFocus={(e) => { e.currentTarget.style.borderColor = 'var(--color-accent)' }}
+        onBlur={(e) => { e.currentTarget.style.borderColor = 'var(--border-default)' }}
+      />
+      {/* 插入变量下拉按钮 */}
+      <button
+        type="button"
+        onClick={() => setShowVars(!showVars)}
+        title="插入变量"
+        style={{
+          height: '32px', width: '32px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+          borderRadius: 'var(--radius-md)', border: `1px solid ${showVars ? 'var(--color-accent)' : 'var(--border-default)'}`,
+          backgroundColor: showVars ? 'var(--color-accent-muted)' : 'var(--surface-default)',
+          color: showVars ? 'var(--color-accent)' : 'var(--text-tertiary)',
+          fontSize: '16px', cursor: 'pointer', fontWeight: 700,
+        }}
+      >
+        +
+      </button>
+      {showVars && (
+        <div style={{
+          position: 'absolute', top: '100%', left: 0, zIndex: 100, marginTop: '4px',
+          padding: '6px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-strong)',
+          backgroundColor: '#1a1a2e', boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+          display: 'flex', flexWrap: 'wrap', gap: '4px', maxWidth: '280px',
+        }}>
+          {FILENAME_VARS.map((v) => (
+            <button
+              key={v.key}
+              type="button"
+              onClick={() => { insertVar(v.key); setShowVars(false) }}
+              title={v.key}
+              style={{
+                height: '26px', padding: '0 8px', borderRadius: '5px',
+                border: '1px solid var(--border-subtle)', backgroundColor: 'transparent',
+                color: '#e0e0e0', fontSize: '11px', cursor: 'pointer', fontFamily: 'inherit',
+                whiteSpace: 'nowrap',
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--color-accent)'; e.currentTarget.style.backgroundColor = 'var(--color-accent-muted)' }}
+              onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--border-subtle)'; e.currentTarget.style.backgroundColor = 'transparent' }}
+            >
+              {v.label}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
