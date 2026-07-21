@@ -44,10 +44,7 @@ let unsubStore: (() => void) | null = null
 
 /* ── 平台检测 ── */
 
-/** 是否运行在 Electron 环境 */
-function isElectron(): boolean {
-  return typeof window !== 'undefined' && !!window.electronAPI
-}
+import { isElectron } from '../utils/env'
 
 /* ── 托盘状态更新 ── */
 

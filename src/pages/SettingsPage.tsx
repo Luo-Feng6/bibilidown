@@ -5,11 +5,7 @@ import { usePresetStore } from '../stores/presetStore'
 import { useShallow } from 'zustand/shallow'
 import { showConfirm } from '../services/dialog-service'
 
-/* ── 平台检测 ── */
-
-function isElectron(): boolean {
-  return typeof window !== 'undefined' && !!(window as any).electronAPI
-}
+import { isElectron } from '../utils/env'
 
 /* ── 仅桌面版徽标 ── */
 

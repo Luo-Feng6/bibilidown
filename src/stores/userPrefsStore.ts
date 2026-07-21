@@ -127,7 +127,7 @@ export const useUserPrefsStore = create<UserPrefsStore>()(
       setMinimizeToTray: (minimizeToTray) => set({ minimizeToTray }),
       setLoginInfo: (cookieStr, loginName, loginFace) =>
         set({ cookieStr, loginName, loginFace }),
-      clearLoginInfo: () => set({ cookieStr: '', loginName: '', loginFace: '' }),
+      clearLoginInfo: () => set({ cookieStr: '', loginName: '', loginFace: '', cookieUsername: null, cookieStatus: 'unknown' }),
       setCookieStatus: (cookieStatus) => set({ cookieStatus }),
       setCookieUsername: (cookieUsername) => set({ cookieUsername }),
       setAccentColor: (accentColor) => set({ accentColor }),

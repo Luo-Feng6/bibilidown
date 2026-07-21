@@ -1,9 +1,5 @@
 import { Minus, Square, X } from '@phosphor-icons/react'
-
-/** 是否运行在 Electron 环境 */
-function isElectron(): boolean {
-  return typeof window !== 'undefined' && !!window.electronAPI
-}
+import { isElectron } from '../utils/env'
 
 /**
  * TitleBar — Custom window title bar (replaces native OS chrome).

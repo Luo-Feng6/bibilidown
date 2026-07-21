@@ -3,6 +3,7 @@ import { useDownloadStore } from '../stores/downloadStore'
 import { useUserPrefsStore } from '../stores/userPrefsStore'
 import { logout } from '../services/login-service'
 import { setGlobalCookie } from '../services/bilibili-api'
+import { isElectron } from '../utils/env'
 
 interface StatusBarProps {
   onLoginClick?: () => void
@@ -21,7 +22,7 @@ export default function StatusBar({ onLoginClick }: StatusBarProps) {
   const loginFace = useUserPrefsStore((s) => s.loginFace)
 
   const displayName = cookieUsername ?? loginName
-  const isDesktop = typeof window !== 'undefined' && !!(window as any).electronAPI
+  const isDesktop = isElectron()
 
   return (
     <footer
@@ -76,7 +77,7 @@ export default function StatusBar({ onLoginClick }: StatusBarProps) {
         />
         <span>就绪</span>
         <span style={{ color: 'var(--text-disabled)' }}>·</span>
-        <span>v7.2.0</span>
+        <span>v7.7.0</span>
         {cookieStatus === 'expired' && (
           <>
             <span style={{ color: 'var(--text-disabled)' }}>·</span>
