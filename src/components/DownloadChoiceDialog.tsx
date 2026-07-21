@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { VideoCamera, MusicNotes, Archive, LinkSimpleHorizontal, X, Warning } from '@phosphor-icons/react'
+import { VideoCamera, MusicNotes, Archive, LinkSimple, X, Warning } from '@phosphor-icons/react'
 
 export type DownloadChoice = 'video-only' | 'audio-only' | 'separate' | 'merge'
 
@@ -345,7 +345,7 @@ export default function DownloadChoiceDialog({
             onClick={() => onSelect('separate')}
           />
           <ChoiceButton
-            icon={<LinkSimpleHorizontal size={20} />}
+            icon={<LinkSimple size={20} />}
             label="合并（视频+音频合成一个文件）"
             desc="视频+音频合成为一个文件"
             onClick={() => setShowMergeWarning(true)}
@@ -355,10 +355,10 @@ export default function DownloadChoiceDialog({
           <p style={{
             margin: '14px 0 0',
             fontSize: '12px',
-            color: 'var(--color-warning-text, #92400e)',
+            color: 'var(--text-secondary)',
             textAlign: 'center',
-            background: 'var(--color-warning-bg, #fef3c7)',
-            border: '1px solid var(--color-warning-border, #f59e0b)',
+            background: 'var(--color-warning-bg)',
+            border: '1px solid var(--border-subtle)',
             borderRadius: 'var(--radius-lg, 8px)',
             padding: '8px 12px',
             lineHeight: 1.5,
@@ -367,18 +367,6 @@ export default function DownloadChoiceDialog({
           </p>
         </div>
       )}
-
-      {/* Animations */}
-      <style>{`
-        @keyframes dialog-fade-in {
-          from { opacity: 0; }
-          to   { opacity: 1; }
-        }
-        @keyframes dialog-scale-in {
-          from { opacity: 0; transform: scale(0.95); }
-          to   { opacity: 1; transform: scale(1); }
-        }
-      `}</style>
     </div>
   )
 }
