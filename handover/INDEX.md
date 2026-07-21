@@ -1,6 +1,6 @@
 # BibiliDown 交接文档 — 总索引
 
-> 最后更新：2026-07-22 | 当前版本：**v7.7.4** | 累计 **21 轮**迭代
+> 最后更新：2026-07-22 | 当前版本：**v7.7.4** | 累计 **22 轮**迭代
 
 ---
 
@@ -40,6 +40,7 @@ handover/
 | 版本 | 轮次 | 日期 | 关键交付 | Git |
 |------|------|------|---------|-----|
 | v7.7.4 | [R21](rounds/21-第二十一轮交接文档.md) | 07-22 | CDN 代理下载修复，warning-bg token 恢复，下载弹窗图标 | `be118ef..8649220` |
+| v7.7.4 | [R22](rounds/22-第二十二轮交接文档.md) | 07-22 | README 重写（~70→~250行），EpisodeList 分页 bug 修复 | `db43f23` `3571d2f` |
 | v7.7.3 | [R20](rounds/20-第二十轮交接文档.md) | 07-22 | DownloadPanel 徽章 writingMode 修复，版本号同步 | `8939345` |
 | v7.7.2 | [R19](rounds/19-第十九轮交接文档.md) | 07-22 | API_BASE 修复，下载弹窗 React 化，LoginPanel 拆分，keyframes 去重 | `8b54f64..009a67a` |
 | v7.7.1 | [R18](rounds/18-第十八轮交接文档.md) | 07-22 | 关于页重设计，仓库整理，退出登录修复，isElectron 去重 | `f7acab5` |
@@ -73,6 +74,7 @@ handover/
 | [R18](rounds/18-第十八轮交接文档.md) | 关于页 + 整理 | 关于页重设计、仓库整理、浏览器/桌面端对比、退出登录修复 |
 | [R19](rounds/19-第十九轮交接文档.md) | P1 收尾 | API_BASE 修复、下载弹窗 React 化、LoginPanel 拆分（1131→6文件）、keyframes 去重 |
 | [R21](rounds/21-第二十一轮交接文档.md) | CDN 下载 + 配色 | CDN 代理下载、warning-bg 琥珀色恢复、下载弹窗图标、v7.7.4 |
+| [R22](rounds/22-第二十二轮交接文档.md) | README + 分页修复 | README 全面重写（~70→~250行）、EpisodeList 分页 bug（两个根因） |
 | [R20](rounds/20-第二十轮交接文档.md) | writingMode 修复 | DownloadPanel 折叠徽章 CSS 修复、版本号统一至 v7.7.3 |
 
 ---
@@ -82,8 +84,8 @@ handover/
 ### 新接手者（快速上手）
 
 1. **本 INDEX.md** — 5 分钟了解全局
-2. **[R21](rounds/21-第二十一轮交接文档.md)** — 最新改动：CDN 代理下载 + 配色修复
-3. **[R20](rounds/20-第二十轮交接文档.md)** — 上一轮：writingMode 修复
+2. **[R22](rounds/22-第二十二轮交接文档.md)** — 最新改动：README 重写 + EpisodeList 分页 bug 修复
+3. **[R21](rounds/21-第二十一轮交接文档.md)** — CDN 代理下载 + 配色修复
 4. **[R19](rounds/19-第十九轮交接文档.md)** — 最近的重大架构改动（API_BASE / 下载弹窗 / LoginPanel）
 5. **`ARCHITECTURE.md`**（项目根目录） — 系统架构、数据流、组件树
 6. **`npm run dev`** — 启动，走一遍核心流程
@@ -138,4 +140,3 @@ npm run build:electron   # 打包 Windows 安装包
 | 1 | 首次使用引导（空状态 3 步引导卡片） | P3 |
 | 2 | Electron 合并模式临时文件清理 | P3 |
 | 3 | 浏览器版线上部署（Vercel / GitHub Pages） | P3 |
-| 4 | EpisodeList 分页 bug（收藏夹 >3 集） | 🟡 已知 bug |
