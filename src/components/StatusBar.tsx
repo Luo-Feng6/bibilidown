@@ -77,7 +77,7 @@ export default function StatusBar({ onLoginClick }: StatusBarProps) {
         />
         <span>就绪</span>
         <span style={{ color: 'var(--text-disabled)' }}>·</span>
-        <span>v7.7.3</span>
+        <span>v7.7.4</span>
         {cookieStatus === 'expired' && (
           <>
             <span style={{ color: 'var(--text-disabled)' }}>·</span>

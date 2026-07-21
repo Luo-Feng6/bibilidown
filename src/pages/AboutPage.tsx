@@ -9,7 +9,7 @@ import {
 import { isElectron, getElectronVersion, getChromeVersion } from '../utils/env'
 
 /* ── Version (synced with package.json) ── */
-const APP_VERSION = 'v7.7.3'
+const APP_VERSION = 'v7.7.4'
 
 /* ── Platform info ── */
 const electronVersion = getElectronVersion()
@@ -211,7 +211,10 @@ export default function AboutPage() {
         <CollapsibleCard title="更新日志" icon={<Info size={14} />} defaultOpen={false}>
           <div style={{ position: 'relative', padding: '12px 16px 8px 44px' }}>
             <div style={{ position: 'absolute', left: '21px', top: '20px', bottom: '20px', width: '1px', backgroundColor: 'var(--border-subtle)' }} />
-            <TimelineEntry version="v7.7.3" date="2026-07-22" latest>
+            <TimelineEntry version="v7.7.4" date="2026-07-22" latest>
+              浏览器模式 CDN 下载修复 — Vite 代理绕过防盗链 · warning-bg token 琥珀色恢复 · 下载弹窗图标主题色统一
+            </TimelineEntry>
+            <TimelineEntry version="v7.7.3" date="2026-07-22">
               折叠下载面板数字徽章 writingMode 修复 — 去掉对阿拉伯数字无效的 vertical-rl，数字正常横排显示
             </TimelineEntry>
             <TimelineEntry version="v7.7.2" date="2026-07-22">
