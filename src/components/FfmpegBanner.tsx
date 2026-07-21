@@ -40,14 +40,14 @@ export default function FfmpegBanner() {
     }
   }
 
-  const accentColor = 'var(--color-warning, #f59e0b)'
+  const accentColor = 'var(--color-warning)'
 
   return (
     <div
       className="flex items-center gap-3t px-4t py-3t mx-8t mt-4t"
       style={{
-        backgroundColor: 'rgba(245, 158, 11, 0.10)',
-        border: '1px solid rgba(245, 158, 11, 0.22)',
+        backgroundColor: 'var(--color-warning-bg)',
+        border: '1px solid var(--color-warning)',
         borderRadius: 'var(--radius-xl)',
       }}
     >
@@ -67,7 +67,7 @@ export default function FfmpegBanner() {
           size={20}
           weight="fill"
           style={{
-            color: 'var(--color-danger, #ef4444)',
+            color: 'var(--color-error)',
             flexShrink: 0,
           }}
         />
@@ -101,7 +101,7 @@ export default function FfmpegBanner() {
                 style={{
                   flex: 1,
                   height: '4px',
-                  backgroundColor: 'rgba(255, 255, 255, 0.08)',
+                  backgroundColor: 'var(--surface-overlay)',
                   borderRadius: '2px',
                   overflow: 'hidden',
                 }}
@@ -170,7 +170,7 @@ export default function FfmpegBanner() {
             }}
             onMouseEnter={(e) => {
               e.currentTarget.style.color = 'var(--text-primary)'
-              e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.08)'
+              e.currentTarget.style.backgroundColor = 'var(--surface-overlay)'
             }}
             onMouseLeave={(e) => {
               e.currentTarget.style.color = 'var(--text-tertiary)'
@@ -187,12 +187,12 @@ export default function FfmpegBanner() {
               className="inline-flex items-center gap-1.5 px-3t py-1.5 rounded-lg transition-colors text-body-sm font-medium"
               style={{
                 backgroundColor: accentColor,
-                color: '#1a1a1a',
+                color: 'var(--text-inverse)',
                 borderRadius: 'var(--radius-lg)',
                 fontSize: 'var(--text-caption)',
               }}
               onMouseEnter={(e) => {
-                e.currentTarget.style.backgroundColor = '#fbbf24'
+                e.currentTarget.style.backgroundColor = 'var(--color-warning)'
               }}
               onMouseLeave={(e) => {
                 e.currentTarget.style.backgroundColor = accentColor
@@ -209,18 +209,18 @@ export default function FfmpegBanner() {
               rel="noopener noreferrer"
               className="inline-flex items-center gap-1.5 px-3t py-1.5 rounded-lg transition-colors text-body-sm"
               style={{
-                backgroundColor: 'rgba(255, 255, 255, 0.06)',
+                backgroundColor: 'var(--surface-overlay)',
                 color: 'var(--text-secondary)',
                 border: '1px solid var(--border-subtle)',
                 borderRadius: 'var(--radius-lg)',
                 fontSize: 'var(--text-caption)',
               }}
               onMouseEnter={(e) => {
-                e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.10)'
+                e.currentTarget.style.backgroundColor = 'var(--surface-overlay)'
                 e.currentTarget.style.color = 'var(--text-primary)'
               }}
               onMouseLeave={(e) => {
-                e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.06)'
+                e.currentTarget.style.backgroundColor = 'var(--surface-overlay)'
                 e.currentTarget.style.color = 'var(--text-secondary)'
               }}
             >
@@ -242,7 +242,7 @@ export default function FfmpegBanner() {
               }}
               onMouseEnter={(e) => {
                 e.currentTarget.style.color = 'var(--text-primary)'
-                e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.08)'
+                e.currentTarget.style.backgroundColor = 'var(--surface-overlay)'
               }}
               onMouseLeave={(e) => {
                 e.currentTarget.style.color = 'var(--text-tertiary)'
@@ -260,12 +260,12 @@ export default function FfmpegBanner() {
               className="inline-flex items-center gap-1.5 px-3t py-1.5 rounded-lg transition-colors text-body-sm font-medium"
               style={{
                 backgroundColor: accentColor,
-                color: '#1a1a1a',
+                color: 'var(--text-inverse)',
                 borderRadius: 'var(--radius-lg)',
                 fontSize: 'var(--text-caption)',
               }}
               onMouseEnter={(e) => {
-                e.currentTarget.style.backgroundColor = '#fbbf24'
+                e.currentTarget.style.backgroundColor = 'var(--color-warning)'
               }}
               onMouseLeave={(e) => {
                 e.currentTarget.style.backgroundColor = accentColor
@@ -280,18 +280,18 @@ export default function FfmpegBanner() {
               onClick={() => checkFfmpeg()}
               className="inline-flex items-center gap-1.5 px-3t py-1.5 rounded-lg transition-colors text-body-sm"
               style={{
-                backgroundColor: 'rgba(255, 255, 255, 0.06)',
+                backgroundColor: 'var(--surface-overlay)',
                 color: 'var(--text-secondary)',
                 border: '1px solid var(--border-subtle)',
                 borderRadius: 'var(--radius-lg)',
                 fontSize: 'var(--text-caption)',
               }}
               onMouseEnter={(e) => {
-                e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.10)'
+                e.currentTarget.style.backgroundColor = 'var(--surface-overlay)'
                 e.currentTarget.style.color = 'var(--text-primary)'
               }}
               onMouseLeave={(e) => {
-                e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.06)'
+                e.currentTarget.style.backgroundColor = 'var(--surface-overlay)'
                 e.currentTarget.style.color = 'var(--text-secondary)'
               }}
             >
@@ -313,7 +313,7 @@ export default function FfmpegBanner() {
               }}
               onMouseEnter={(e) => {
                 e.currentTarget.style.color = 'var(--text-primary)'
-                e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.08)'
+                e.currentTarget.style.backgroundColor = 'var(--surface-overlay)'
               }}
               onMouseLeave={(e) => {
                 e.currentTarget.style.color = 'var(--text-tertiary)'

@@ -10,6 +10,8 @@ export interface HistoryEntry {
   title: string
   /** BV 号（重新下载时需要） */
   bvid?: string
+  /** 用户输入的原始链接地址 */
+  inputUrl?: string
   /** Downloaded quality label, e.g. "1080P60" */
   quality: string
   /** Format: "mp4" / "flac" */
@@ -30,6 +32,7 @@ interface HistoryStore {
   /* Actions */
   addEntry: (entry: HistoryEntry) => void
   removeEntry: (id: string) => void
+  deleteEntry: (id: string) => void
   clearHistory: () => void
   exportAll: () => HistoryEntry[]
   importEntries: (entries: HistoryEntry[]) => void
@@ -56,6 +59,11 @@ export const useHistoryStore = create<HistoryStore>()(
           entries: s.entries.filter((e) => e.id !== id),
         })),
 
+      deleteEntry: (id) =>
+        set((s) => ({
+          entries: s.entries.filter((e) => e.id !== id),
+        })),
+
       clearHistory: () => set({ entries: [] }),
 
       exportAll: () => get().entries,
@@ -70,7 +78,10 @@ export const useHistoryStore = create<HistoryStore>()(
         }),
     }),
     {
-      name: 'bilibilidown-history',
+      name: 'bibilidown-history',
+      /** Opt out of automatic hydration — we manually call rehydrate() in App.tsx
+       *  to avoid the zustand v5 persist infinite re-render cycle. */
+      skipHydration: true,
     }
   )
 )

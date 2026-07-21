@@ -93,6 +93,10 @@ interface ElectronAPI {
   updateTrayStats: (stats: TrayStats) => Promise<void>
   sendTrayNotification: (options: { title: string; body: string }) => Promise<void>
 
+  /* Shell */
+  openPath: (filePath: string) => Promise<string>
+  showItemInFolder: (filePath: string) => Promise<void>
+
   /* App quit */
   quitApp: () => Promise<void>
 }

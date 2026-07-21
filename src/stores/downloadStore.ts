@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { persist } from 'zustand/middleware'
 import type { DownloadItemData } from '../components/DownloadItem'
 
 /* ── Types ── */
@@ -7,11 +8,12 @@ interface DownloadStore {
   items: DownloadItemData[]
 
   /* Actions */
-  addItem: (item: DownloadItemData) => void
+  addItem: (item: DownloadItemData) => { duplicate: boolean; id: string }
   addItems: (items: DownloadItemData[]) => void
   removeItem: (id: string) => void
   updateItem: (id: string, patch: Partial<DownloadItemData>) => void
   clearCompleted: () => void
+  clearFailed: () => void
   clearAll: () => void
 
   /* Convenience actions */
@@ -28,13 +30,31 @@ interface DownloadStore {
 
 /* ── Store ── */
 
-export const useDownloadStore = create<DownloadStore>((set, get) => ({
+export const useDownloadStore = create<DownloadStore>()(
+  persist(
+    (set, get) => ({
   items: [],
 
-  addItem: (item) =>
+  addItem: (item) => {
+    /* Duplicate detection: only block if identical bvid+cid+quality+mode (excluding failed) */
+    if (item.bvid && item.cid != null) {
+      const exists = get().items.some(
+        (d) =>
+          d.bvid === item.bvid &&
+          d.cid === item.cid &&
+          d.quality === item.quality &&
+          d.downloadMode === item.downloadMode &&
+          d.status !== 'failed'
+      )
+      if (exists) {
+        return { duplicate: true, id: item.id }
+      }
+    }
     set((s) => ({
       items: [...s.items, item],
-    })),
+    }))
+    return { duplicate: false, id: item.id }
+  },
 
   addItems: (items) =>
     set((s) => ({
@@ -56,6 +76,11 @@ export const useDownloadStore = create<DownloadStore>((set, get) => ({
       items: s.items.filter((d) => d.status !== 'completed'),
     })),
 
+  clearFailed: () =>
+    set((s) => ({
+      items: s.items.filter((d) => d.status !== 'failed'),
+    })),
+
   clearAll: () => set({ items: [] }),
 
   /* ── Convenience actions ── */
@@ -70,7 +95,7 @@ export const useDownloadStore = create<DownloadStore>((set, get) => ({
   resumeItem: (id) =>
     set((s) => ({
       items: s.items.map((d) =>
-        d.id === id ? { ...d, status: 'downloading' as const, speed: '恢复中...' } : d
+        d.id === id ? { ...d, status: 'queued' as const, speed: '等待中' } : d
       ),
     })),
 
@@ -101,4 +126,33 @@ export const useDownloadStore = create<DownloadStore>((set, get) => ({
 
   failedCount: () =>
     get().items.filter((d) => d.status === 'failed').length,
-}))
+}),
+    {
+      name: 'bibilidown-downloads',
+      /** Opt out of automatic hydration — we manually call rehydrate() in App.tsx
+       *  to avoid the zustand v5 persist infinite re-render cycle. */
+      skipHydration: true,
+      /* Only persist non-ephemeral fields; reset runtime state on reload */
+      partialize: (state) => ({
+        items: state.items.map((item) => ({
+          id: item.id,
+          title: item.title,
+          quality: item.quality,
+          format: item.format,
+          totalSize: item.totalSize,
+          bvid: item.bvid,
+          cid: item.cid,
+          inputUrl: item.inputUrl,
+          downloadMode: item.downloadMode,
+          status: 'paused' as const,
+          progress: 0,
+          downloadedSize: '0MB',
+          speed: '等待恢复',
+          eta: '',
+          errorMessage: undefined,
+          speedHistory: [],
+        })),
+      }),
+    }
+  )
+)

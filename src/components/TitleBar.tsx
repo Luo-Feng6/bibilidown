@@ -1,11 +1,20 @@
 import { Minus, Square, X } from '@phosphor-icons/react'
 
+/** 是否运行在 Electron 环境 */
+function isElectron(): boolean {
+  return typeof window !== 'undefined' && !!window.electronAPI
+}
+
 /**
  * TitleBar — Custom window title bar (replaces native OS chrome).
  * Provides drag region, app icon, minimize/maximize/close buttons.
  * Windows 11 style: rounded hover backgrounds on window controls.
+ *
+ * 浏览器模式：仅显示图标 + 标题，不显示窗口控制按钮。
+ * Electron 模式：显示完整标题栏含窗口控制（最小化/最大化/关闭）。
  */
 export default function TitleBar() {
+  const inElectron = isElectron()
   return (
     <header
       className="titlebar-drag flex items-center justify-between flex-shrink-0 select-none"
@@ -17,48 +26,40 @@ export default function TitleBar() {
     >
       {/* Left: App icon + name */}
       <div className="flex items-center gap-2t">
-        <div
-          className="flex items-center justify-center rounded-sm"
-          style={{
-            width: '18px',
-            height: '18px',
-            backgroundColor: 'var(--brand-pink)',
-            color: '#fff',
-            fontSize: '11px',
-            fontWeight: 700,
-          }}
-        >
-          B
-        </div>
+        <img src="/favicon.svg" alt="" style={{ width: '18px', height: '18px' }} />
         <span
           style={{
             fontSize: 'var(--text-body-sm)',
             color: 'var(--text-primary)',
           }}
         >
-          BilibiliDown
+          BibiliDown
         </span>
       </div>
 
-      {/* Right: Window controls */}
-      <div
-        className="titlebar-no-drag flex items-center h-full"
-        style={{ color: 'var(--text-secondary)' }}
-      >
-        <WindowControl
-          label={<Minus size={12} weight="regular" />}
-          action="minimize"
-        />
-        <WindowControl
-          label={<Square size={10} weight="regular" />}
-          action="maximize"
-        />
-        <WindowControl
-          label={<X size={12} weight="regular" />}
-          action="close"
-          isClose
-        />
-      </div>
+      {/* Right: Window controls (Electron only) */}
+      {inElectron && (
+        <div
+          className="titlebar-no-drag flex items-center h-full"
+          style={{ color: 'var(--text-secondary)' }}
+        >
+          <WindowControl
+            label={<Minus size={12} weight="regular" />}
+            action="minimize"
+          />
+          <WindowControl
+            label={<Square size={10} weight="regular" />}
+            action="maximize"
+          />
+          <WindowControl
+            label={<X size={12} weight="regular" />}
+            action="close"
+            isClose
+          />
+        </div>
+      )}
+      {/* Browser mode spacer: keep right padding balanced */}
+      {!inElectron && <div style={{ width: '16px' }} />}
     </header>
   )
 }
@@ -89,24 +90,16 @@ function WindowControl({
         height: '32px',
         fontSize: '12px',
         color: 'var(--text-secondary)',
-        ...(isClose
-          ? {
-              ':hover': {
-                backgroundColor: 'var(--color-error)',
-                color: '#fff',
-              } as React.CSSProperties,
-            }
-          : {}),
       }}
       onMouseEnter={(e) => {
         e.currentTarget.style.backgroundColor = isClose
           ? 'var(--color-error)'
-          : 'rgba(255,255,255,0.06)'
-        if (isClose) e.currentTarget.style.color = '#fff'
+          : 'var(--surface-overlay)'
+        if (isClose) e.currentTarget.style.color = 'var(--text-inverse)'
       }}
       onMouseLeave={(e) => {
         e.currentTarget.style.backgroundColor = 'transparent'
-        e.currentTarget.style.color = ''
+        e.currentTarget.style.color = 'var(--text-secondary)'
       }}
     >
       {label}

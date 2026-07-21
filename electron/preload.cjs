@@ -104,6 +104,21 @@ contextBridge.exposeInMainWorld('electronAPI', {
    */
   sendTrayNotification: (options) => ipcRenderer.invoke('tray:notification', options),
 
+  /* ── Shell ── */
+  /**
+   * Open a file or folder with the system default application.
+   * @param {string} filePath
+   * @returns {Promise<string>} Error message string, empty on success
+   */
+  openPath: (filePath) => ipcRenderer.invoke('shell:openPath', filePath),
+
+  /**
+   * Show the given file in the system file manager (Explorer/Finder).
+   * @param {string} filePath
+   * @returns {Promise<void>}
+   */
+  showItemInFolder: (filePath) => ipcRenderer.invoke('shell:showItemInFolder', filePath),
+
   /* ── App quit ── */
   /**
    * Actually quit the application (instead of minimizing to tray).

@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, Menu, Tray, nativeImage, Notification } = require('electron')
+const { app, BrowserWindow, ipcMain, dialog, shell, Menu, Tray, nativeImage, Notification } = require('electron')
 const path = require('path')
 const fs = require('fs')
 const https = require('https')
@@ -217,6 +217,16 @@ ipcMain.handle('dialog:saveFile', async (_event, defaultName) => {
     ],
   })
   return result.canceled ? null : result.filePath
+})
+
+/* ── IPC handlers: shell operations ── */
+
+ipcMain.handle('shell:openPath', async (_event, filePath) => {
+  return shell.openPath(filePath)
+})
+
+ipcMain.handle('shell:showItemInFolder', async (_event, filePath) => {
+  return shell.showItemInFolder(filePath)
 })
 
 /* ── IPC handlers: app info ── */

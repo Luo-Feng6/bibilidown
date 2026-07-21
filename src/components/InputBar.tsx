@@ -1,6 +1,6 @@
-import { useState, useRef, type KeyboardEvent } from 'react'
+import { useState, useRef, useEffect, type KeyboardEvent } from 'react'
 import { Link, X, Warning } from '@phosphor-icons/react'
-import { parseBilibiliUrl } from '../services/bilibili-api'
+import { parseBilibiliUrl, identifyInput } from '../services/bilibili-api'
 import { useParseStore } from '../stores/parseStore'
 import { useToastStore } from '../stores/toastStore'
 
@@ -13,12 +13,59 @@ import { useToastStore } from '../stores/toastStore'
  */
 export default function InputBar() {
   const [value, setValue] = useState('')
+  const [clipboardHint, setClipboardHint] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  const lastCheckRef = useRef<number>(0)
+  const dismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const hasCheckedOnceRef = useRef<boolean>(false)
 
   const { status, error, lastUrl, setUrl, setParsing, setVideos, setError, reset: resetParse } =
     useParseStore()
 
   const isParsing = status === 'parsing'
+
+  // Clipboard auto-detection on focus/visibility change
+  useEffect(() => {
+    const checkClipboard = async () => {
+      // Don't show if input already has content
+      if (value.trim()) return
+      // Debounce: allow first check, then 30s between checks
+      const now = Date.now()
+      if (hasCheckedOnceRef.current && now - lastCheckRef.current < 30_000) return
+
+      try {
+        const text = await navigator.clipboard.readText()
+        if (!text || !text.trim()) return
+        const idInfo = identifyInput(text)
+        if (idInfo) {
+          hasCheckedOnceRef.current = true
+          lastCheckRef.current = now
+          setClipboardHint(text)
+          // Auto-dismiss after 5 seconds
+          if (dismissTimerRef.current) clearTimeout(dismissTimerRef.current)
+          dismissTimerRef.current = setTimeout(() => {
+            setClipboardHint(null)
+          }, 5000)
+        }
+      } catch {
+        // Clipboard access denied or empty — silently ignore
+      }
+    }
+
+    const onFocus = () => { checkClipboard() }
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') checkClipboard()
+    }
+
+    window.addEventListener('focus', onFocus)
+    document.addEventListener('visibilitychange', onVisibilityChange)
+
+    return () => {
+      window.removeEventListener('focus', onFocus)
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+      if (dismissTimerRef.current) clearTimeout(dismissTimerRef.current)
+    }
+  }, [value])
 
   const handleParse = async () => {
     const trimmed = value.trim()
@@ -73,24 +120,51 @@ export default function InputBar() {
             border: '1px solid var(--input-border)',
             boxShadow:
               status === 'error'
-                ? '0 0 0 2px rgba(239, 68, 68, 0.3)'
+                ? '0 0 0 2px var(--color-error)'
                 : document.activeElement === inputRef.current
                   ? 'var(--input-ring-focus)'
                   : 'none',
             borderColor:
               status === 'error'
-                ? 'rgba(239, 68, 68, 0.5)'
+                ? 'var(--color-error)'
                 : undefined,
           }}
         >
+          {/* Clipboard hint chip */}
+          {clipboardHint && (
+            <button
+              onClick={() => {
+                setValue(clipboardHint)
+                setClipboardHint(null)
+                if (dismissTimerRef.current) clearTimeout(dismissTimerRef.current)
+              }}
+              className="hover:underline whitespace-nowrap"
+              style={{
+                position: 'absolute',
+                top: '-36px',
+                left: '0',
+                backgroundColor: 'var(--surface-default)',
+                border: '1px solid var(--border-subtle)',
+                borderRadius: 'var(--radius-md)',
+                padding: '4px 10px',
+                fontSize: '12px',
+                cursor: 'pointer',
+                color: 'var(--color-accent)',
+              }}
+              title="点击粘贴到输入框"
+            >
+              {'\u{1F4CB} 检测到剪贴板中的B站链接，点击粘贴'}
+            </button>
+          )}
+
           {/* Leading icon */}
           <span
-            className="flex-shrink-0 select-none"
+            className="flex-shrink-0 select-none flex items-center justify-center"
             style={{
-              width: '40px',
-              textAlign: 'center',
+              width: '44px',
+              height: '100%',
               fontSize: 'var(--icon-size-sm)',
-              color: status === 'error' ? 'var(--color-error, #EF4444)' : 'var(--text-tertiary)',
+              color: status === 'error' ? 'var(--color-error)' : 'var(--text-tertiary)',
             }}
           >
             {status === 'error' ? (
@@ -102,6 +176,7 @@ export default function InputBar() {
 
           {/* Input field */}
           <input
+            id="bilibili-url-input"
             ref={inputRef}
             type="text"
             value={value}
@@ -145,7 +220,7 @@ export default function InputBar() {
                 color: 'var(--text-tertiary)',
               }}
               onMouseEnter={(e) => {
-                e.currentTarget.style.backgroundColor = 'rgba(0,0,0,0.06)'
+                e.currentTarget.style.backgroundColor = 'var(--surface-overlay)'
               }}
               onMouseLeave={(e) => {
                 e.currentTarget.style.backgroundColor = 'transparent'
@@ -169,7 +244,7 @@ export default function InputBar() {
             fontSize: 'var(--text-body)',
             backgroundColor: value.trim()
               ? 'var(--btn-primary-bg)'
-              : 'var(--gray-200)',
+              : 'var(--surface-overlay)',
             color: value.trim()
               ? 'var(--btn-primary-text)'
               : 'var(--text-disabled)',
@@ -196,7 +271,13 @@ export default function InputBar() {
           }}
         >
           {isParsing ? (
-            <span className="inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+            <span
+              className="inline-block w-4 h-4 border-2 rounded-full animate-spin"
+              style={{
+                borderColor: 'var(--surface-overlay)',
+                borderTopColor: 'var(--text-inverse)',
+              }}
+            />
           ) : (
             '解析'
           )}
@@ -208,10 +289,10 @@ export default function InputBar() {
         <div
           className="flex items-center gap-2t px-3t py-2t rounded-lg"
           style={{
-            backgroundColor: 'rgba(239, 68, 68, 0.08)',
-            border: '1px solid rgba(239, 68, 68, 0.2)',
+            backgroundColor: 'var(--color-error-bg)',
+            border: '1px solid var(--color-error)',
             fontSize: 'var(--text-body-sm)',
-            color: 'var(--color-error, #EF4444)',
+            color: 'var(--color-error)',
           }}
         >
           <Warning size={14} weight="fill" />

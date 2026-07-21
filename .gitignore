@@ -1,6 +1,46 @@
+# Dependencies
 node_modules/
+
+# Build output
 dist/
 release/
 *.exe
 *.blockmap
 win-unpacked/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Env
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+npm-debug.log*
+
+# FFmpeg (downloaded at runtime)
+ffmpeg/ffmpeg.exe
+
+# Claude Code
+.claude/
+.agents/
+skills-lock.json
+
+# Internal dev docs (handover, specs)
+handover/
+
+# Icon design exploration (current icon is build/icon.svg)
+build/icon-variants/
+
+# Old Java archive (not active)
+legacy-java/
+
+# Electron binary cache
+electron-cache/

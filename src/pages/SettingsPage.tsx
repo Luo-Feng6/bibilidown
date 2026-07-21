@@ -1,191 +1,524 @@
-import { GearSix, Power } from '@phosphor-icons/react'
+import { useState, useRef, useEffect } from 'react'
+import { GearSix, Power, ArrowCounterClockwise, CaretDown } from '@phosphor-icons/react'
 import { useUserPrefsStore } from '../stores/userPrefsStore'
+import { useShallow } from 'zustand/shallow'
+import { showConfirm } from '../services/dialog-service'
 
-/**
- * SettingsPage — Application preferences.
- *
- * Sections:
- * - Theme (light/dark toggle)
- * - Download defaults (path, quality, format)
- * - Concurrency & auto-start
- */
+/* ── 平台检测 ── */
+
+function isElectron(): boolean {
+  return typeof window !== 'undefined' && !!(window as any).electronAPI
+}
+
+/* ── 仅桌面版徽标 ── */
+
+function DesktopOnlyBadge() {
+  if (isElectron()) return null
+  return (
+    <span style={{
+      fontSize: '9px',
+      padding: '1px 5px',
+      borderRadius: 'var(--radius-full)',
+      backgroundColor: 'var(--color-accent-muted)',
+      color: 'var(--color-accent)',
+      fontWeight: 600,
+      marginLeft: '6px',
+    }}>
+      仅桌面版
+    </span>
+  )
+}
+
+/** 统一风格的下拉框 — 暗色主题原生 select 美化 */
+function SettingsSelect({
+  value,
+  onChange,
+  options,
+  style,
+}: {
+  value: string
+  onChange: (value: string) => void
+  options: { value: string; label: string }[]
+  style?: React.CSSProperties
+}) {
+  const [open, setOpen] = useState(false)
+  const containerRef = useRef<HTMLDivElement>(null)
+  const selectedLabel = options.find((o) => o.value === value)?.label ?? value
+
+  // click outside → close
+  useEffect(() => {
+    if (!open) return
+    const handle = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handle)
+    return () => document.removeEventListener('mousedown', handle)
+  }, [open])
+
+  return (
+    <div ref={containerRef} style={{ position: 'relative', display: 'inline-flex', ...style }}>
+      {/* Trigger */}
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: '8px',
+          height: '34px',
+          padding: '0 10px 0 12px',
+          borderRadius: open ? 'var(--radius-md) var(--radius-md) 0 0' : 'var(--radius-md)',
+          border: `1px solid ${open ? 'var(--color-accent)' : 'var(--border-default)'}`,
+          backgroundColor: open ? 'var(--surface-raised)' : 'var(--surface-default)',
+          color: 'var(--text-primary)',
+          fontSize: 'var(--text-body-sm)',
+          cursor: 'pointer',
+          outline: 'none',
+          minWidth: '140px',
+          fontFamily: 'inherit',
+          transition: 'border-color 0.15s, background 0.15s, border-radius 0s',
+          boxShadow: open ? '0 0 0 3px var(--color-accent-muted)' : 'none',
+        }}
+        onMouseEnter={(e) => {
+          if (!open) e.currentTarget.style.borderColor = 'var(--border-strong)'
+        }}
+        onMouseLeave={(e) => {
+          if (!open) e.currentTarget.style.borderColor = 'var(--border-default)'
+        }}
+      >
+        <span>{selectedLabel}</span>
+        <CaretDown
+          size={12}
+          weight="bold"
+          style={{
+            color: 'var(--text-tertiary)',
+            transition: 'transform 0.2s',
+            transform: open ? 'rotate(180deg)' : 'rotate(0deg)',
+          }}
+        />
+      </button>
+
+      {/* Dropdown menu */}
+      {open && (
+        <div
+          style={{
+            position: 'absolute',
+            top: '100%',
+            left: 0,
+            right: 0,
+            zIndex: 50,
+            padding: '4px',
+            borderRadius: '0 0 var(--radius-md) var(--radius-md)',
+            border: '1px solid var(--color-accent)',
+            borderTop: 'none',
+            backgroundColor: 'var(--surface-raised)',
+            boxShadow: '0 8px 24px rgba(0,0,0,0.3)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '1px',
+          }}
+        >
+          {options.map((opt) => {
+            const isSelected = opt.value === value
+            return (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => { onChange(opt.value); setOpen(false) }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  height: '32px',
+                  padding: '0 10px',
+                  borderRadius: '6px',
+                  border: 'none',
+                  backgroundColor: isSelected ? 'var(--color-accent-muted)' : 'transparent',
+                  color: isSelected ? 'var(--color-accent)' : 'var(--text-primary)',
+                  fontSize: 'var(--text-body-sm)',
+                  cursor: 'pointer',
+                  fontFamily: 'inherit',
+                  fontWeight: isSelected ? 600 : 400,
+                  transition: 'background 0.1s',
+                }}
+                onMouseEnter={(e) => {
+                  if (!isSelected) e.currentTarget.style.backgroundColor = 'var(--surface-overlay)'
+                }}
+                onMouseLeave={(e) => {
+                  if (!isSelected) e.currentTarget.style.backgroundColor = 'transparent'
+                }}
+              >
+                <span>{opt.label}</span>
+                {isSelected && (
+                  <span style={{ fontSize: '10px', opacity: 0.6 }}>●</span>
+                )}
+              </button>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+const ACCENT_COLORS = [
+  { key: 'blue', label: '蓝', color: '#3B82F6' },
+  { key: 'pink', label: '粉', color: '#FB7299' },
+  { key: 'cyan', label: '青', color: '#06B6D4' },
+  { key: 'purple', label: '紫', color: '#8B5CF6' },
+  { key: 'amber', label: '金', color: '#F59E0B' },
+] as const
+
+const QUALITY_OPTIONS = ['4K', '1080P60', '1080P', '720P', '480P']
+const FILENAME_HINT: Record<string, string> = {
+  '{title}': '视频标题',
+  '{bvid}': 'BV 号',
+  '{quality}': '清晰度',
+  '{up}': 'UP 主名',
+  '{date}': '日期',
+}
+
 export default function SettingsPage() {
-  const prefs = useUserPrefsStore()
+  const prefs = useUserPrefsStore(
+    useShallow((s) => ({
+      theme: s.theme,
+      downloadPath: s.downloadPath,
+      preferredQuality: s.preferredQuality,
+      preferredFormat: s.preferredFormat,
+      preferredAudioFormat: s.preferredAudioFormat,
+      autoStart: s.autoStart,
+      maxConcurrent: s.maxConcurrent,
+      downloadNotify: s.downloadNotify,
+      openFolderAfterDownload: s.openFolderAfterDownload,
+      maxRetries: s.maxRetries,
+      downloadDanmaku: s.downloadDanmaku,
+      downloadSubtitle: s.downloadSubtitle,
+      filenameTemplate: s.filenameTemplate,
+      minimizeToTray: s.minimizeToTray,
+      accentColor: s.accentColor,
+      setPreferredQuality: s.setPreferredQuality,
+      setPreferredFormat: s.setPreferredFormat,
+      setPreferredAudioFormat: s.setPreferredAudioFormat,
+      setDownloadPath: s.setDownloadPath,
+      setMaxConcurrent: s.setMaxConcurrent,
+      setAutoStart: s.setAutoStart,
+      setDownloadNotify: s.setDownloadNotify,
+      setOpenFolderAfterDownload: s.setOpenFolderAfterDownload,
+      setMaxRetries: s.setMaxRetries,
+      setDownloadDanmaku: s.setDownloadDanmaku,
+      setDownloadSubtitle: s.setDownloadSubtitle,
+      setFilenameTemplate: s.setFilenameTemplate,
+      setMinimizeToTray: s.setMinimizeToTray,
+      setAccentColor: s.setAccentColor,
+      downloadModeStyle: s.downloadModeStyle,
+      setDownloadModeStyle: s.setDownloadModeStyle,
+      showCoverImage: s.showCoverImage,
+      setShowCoverImage: s.setShowCoverImage,
+    }))
+  )
   const setTheme = useUserPrefsStore((s) => s.setTheme)
+
+  const handleReset = async () => {
+    const confirmed = await showConfirm({
+      title: '重置所有设置',
+      message: '确定重置所有设置？下载记录不会删除。',
+    })
+    if (!confirmed) return
+    const s = useUserPrefsStore.getState()
+    s.setTheme('dark')
+    s.setAccentColor('blue')
+    s.setPreferredQuality('1080P60')
+    s.setPreferredFormat('mp4')
+    s.setAutoStart(true)
+    s.setMaxConcurrent(3)
+    s.setDownloadNotify(true)
+    s.setOpenFolderAfterDownload(false)
+    s.setMaxRetries(3)
+    s.setDownloadDanmaku(false)
+    s.setDownloadSubtitle(false)
+    s.setFilenameTemplate('{title}_{quality}')
+    s.setMinimizeToTray(false)
+    s.setDownloadModeStyle('popup')
+  }
 
   return (
     <div className="flex-1 overflow-y-auto px-8t py-6t">
       {/* Page header */}
       <div className="flex items-center gap-3t mb-6t">
         <GearSix size={24} weight="regular" style={{ color: 'var(--color-accent)' }} />
-        <h1
-          className="font-display"
-          style={{
-            fontSize: 'var(--text-heading)',
-            lineHeight: 'var(--text-heading-lh)',
-            color: 'var(--text-primary)',
-          }}
-        >
+        <h1 className="font-display" style={{ fontSize: 'var(--text-heading)', lineHeight: 'var(--text-heading-lh)', color: 'var(--text-primary)' }}>
           设置
         </h1>
       </div>
 
-      {/* ── Theme Section ── */}
+      {/* ── 外观 ── */}
       <Section title="外观">
         <SettingRow label="主题模式" hint="暗色更适合夜间使用">
-          <div
-            className="flex rounded-lg overflow-hidden"
-            style={{ border: '1px solid var(--border-default)', borderRadius: 'var(--radius-lg)' }}
-          >
-            <ThemeButton
-              label="暗色"
-              active={prefs.theme === 'dark'}
-              onClick={() => setTheme('dark')}
-            />
-            <ThemeButton
-              label="亮色"
-              active={prefs.theme === 'light'}
-              onClick={() => setTheme('light')}
-            />
+          <div className="flex rounded-lg overflow-hidden" style={{ border: '1px solid var(--border-default)', borderRadius: 'var(--radius-lg)' }}>
+            <ThemeButton label="暗色" active={prefs.theme === 'dark'} onClick={() => setTheme('dark')} />
+            <ThemeButton label="亮色" active={prefs.theme === 'light'} onClick={() => setTheme('light')} />
+          </div>
+        </SettingRow>
+
+        <SettingRow label="主题色" hint="按钮、选中态的主色调">
+          <div className="flex items-center gap-2t">
+            {ACCENT_COLORS.map((c) => (
+              <button
+                key={c.key}
+                onClick={() => prefs.setAccentColor(c.key)}
+                title={c.label}
+                className="rounded-full transition-all duration-fast"
+                style={{
+                  width: '24px',
+                  height: '24px',
+                  backgroundColor: c.color,
+                  border: '2px solid transparent',
+                  outline: prefs.accentColor === c.key ? '2px solid var(--color-accent)' : '2px solid transparent',
+                  outlineOffset: '2px',
+                  cursor: 'pointer',
+                  transform: prefs.accentColor === c.key ? 'scale(1.15)' : 'scale(1)',
+                }}
+              />
+            ))}
           </div>
         </SettingRow>
       </Section>
 
-      {/* ── Download Section ── */}
+      {/* ── 下载 ── */}
       <Section title="下载">
-        <SettingRow label="默认清晰度" hint="解析视频时自动选中此清晰度">
-          <select
+        <SettingRow label="默认清晰度" hint="解析后默认选中的清晰度">
+          <SettingsSelect
             value={prefs.preferredQuality}
-            onChange={(e) => prefs.setPreferredQuality(e.target.value)}
-            style={{
-              height: 'var(--btn-height)',
-              padding: '0 12px',
-              borderRadius: 'var(--radius-md)',
-              border: '1px solid var(--border-default)',
-              backgroundColor: 'var(--surface-default)',
-              color: 'var(--text-primary)',
-              fontSize: 'var(--text-body)',
-              cursor: 'pointer',
-            }}
-          >
-            {['4K', '1080P60', '1080P', '720P', '480P', '仅音频'].map((q) => (
-              <option key={q} value={q}>{q}</option>
-            ))}
-          </select>
+            onChange={(v) => prefs.setPreferredQuality(v)}
+            options={QUALITY_OPTIONS.map((q) => ({ value: q, label: q }))}
+          />
         </SettingRow>
 
-        <SettingRow label="默认格式" hint="mp4 兼容性最好">
-          <select
+        <SettingRow
+          label="视频输出格式"
+          hint="MP4（推荐）/ M4S（原始流）"
+          info="MP4：即下即播，兼容所有播放器。\nM4S：B站原始 DASH 流，需 FFmpeg 混流后才能播放，保留原始画质。"
+        >
+          <SettingsSelect
             value={prefs.preferredFormat}
-            onChange={(e) => prefs.setPreferredFormat(e.target.value)}
-            style={{
-              height: 'var(--btn-height)',
-              padding: '0 12px',
-              borderRadius: 'var(--radius-md)',
-              border: '1px solid var(--border-default)',
-              backgroundColor: 'var(--surface-default)',
-              color: 'var(--text-primary)',
-              fontSize: 'var(--text-body)',
-              cursor: 'pointer',
-            }}
-          >
-            {['mp4', 'flv', 'm4s'].map((f) => (
-              <option key={f} value={f}>{f}</option>
-            ))}
-          </select>
+            onChange={(v) => prefs.setPreferredFormat(v)}
+            options={[{ value: 'mp4', label: 'MP4（推荐）' }, { value: 'm4s', label: 'M4S（原始流）' }]}
+          />
+        </SettingRow>
+
+        <SettingRow
+          label="音频输出格式"
+          hint="M4A（推荐）/ MP3 / M4S（原始流）"
+          info="M4A：AAC 原始音质，兼容主流播放器。\nMP3：兼容性最佳，但需 FFmpeg 转码（浏览器端仅改扩展名，非真正 MP3）。\nM4S：原始 DASH 音频流，需混流。"
+        >
+          <SettingsSelect
+            value={prefs.preferredAudioFormat}
+            onChange={(v) => prefs.setPreferredAudioFormat(v as 'm4a' | 'm4s' | 'mp3')}
+            options={[{ value: 'm4a', label: 'M4A（推荐）' }, { value: 'mp3', label: 'MP3' }, { value: 'm4s', label: 'M4S（原始流）' }]}
+          />
         </SettingRow>
 
         <SettingRow label="下载路径" hint={prefs.downloadPath || '未设置（默认下载文件夹）'}>
-          <button
-            onClick={async () => {
-              const api = window.electronAPI
-              if (api) {
-                const dir = await api.selectDirectory()
-                if (dir) prefs.setDownloadPath(dir)
-              }
-            }}
-            className="px-4t py-2t rounded-md transition-colors duration-fast"
-            style={{
-              fontSize: 'var(--text-body-sm)',
-              backgroundColor: 'var(--surface-overlay)',
-              color: 'var(--text-secondary)',
-              borderRadius: 'var(--radius-md)',
-              border: 'none',
-              cursor: 'pointer',
-            }}
-          >
-            {prefs.downloadPath ? prefs.downloadPath.split('\\').pop() : '选择文件夹…'}
-          </button>
-        </SettingRow>
-      </Section>
-
-      {/* ── Performance Section ── */}
-      <Section title="性能">
-        <SettingRow label="同时下载" hint="同时进行的下载任务数 (1–8)">
-          <div className="flex items-center gap-2t">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
             <input
-              type="range"
-              min={1}
-              max={8}
-              value={prefs.maxConcurrent}
-              onChange={(e) => prefs.setMaxConcurrent(Number(e.target.value))}
-              style={{ width: '100px', accentColor: 'var(--color-accent)' }}
+              value={prefs.downloadPath}
+              onChange={(e) => prefs.setDownloadPath(e.target.value)}
+              placeholder="D:\BibiliDown\downloads"
+              style={{ width: '160px', height: '32px', padding: '0 8px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-default)', backgroundColor: 'var(--surface-default)', color: 'var(--text-primary)', fontSize: 'var(--text-body-sm)', outline: 'none' }}
+              onFocus={(e) => { e.currentTarget.style.borderColor = 'var(--color-accent)' }}
+              onBlur={(e) => { e.currentTarget.style.borderColor = 'var(--border-default)' }}
             />
-            <span
-              className="font-mono tabular-nums"
-              style={{ fontSize: 'var(--text-body)', color: 'var(--text-primary)', minWidth: '16px' }}
+            <button
+              onClick={async () => {
+                if (isElectron()) {
+                  const dir = await window.electronAPI!.selectDirectory()
+                  if (dir) prefs.setDownloadPath(dir)
+                } else if ('showDirectoryPicker' in window) {
+                  try {
+                    const handle = await (window as any).showDirectoryPicker()
+                    prefs.setDownloadPath(handle.name)
+                  } catch { /* user cancelled */ }
+                }
+              }}
+              title={isElectron() ? undefined : '浏览器模式下路径仅保存配置，实际下载路径由桌面版使用'}
+              style={{ height: '32px', padding: '0 10px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-default)', backgroundColor: 'var(--surface-default)', color: 'var(--text-secondary)', fontSize: 'var(--text-body-sm)', cursor: 'pointer', whiteSpace: 'nowrap', outline: 'none', transition: 'border-color 150ms, color 150ms' }}
+              onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--color-accent)'; e.currentTarget.style.color = 'var(--color-accent)' }}
+              onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--border-default)'; e.currentTarget.style.color = 'var(--text-secondary)' }}
             >
-              {prefs.maxConcurrent}
-            </span>
+              📁 浏览
+            </button>
           </div>
         </SettingRow>
 
-        <SettingRow label="自动开始下载" hint="加入队列后立即开始下载">
-          <Toggle
-            checked={prefs.autoStart}
-            onChange={() => prefs.setAutoStart(!prefs.autoStart)}
+        <SettingRow
+          label="文件名模板"
+          hint={Object.entries(FILENAME_HINT).map(([k, v]) => `${k}=${v}`).join('  ')}
+          info="自定义下载文件名。可用变量：\n{title} — 视频标题\n{bvid} — BV 号\n{quality} — 清晰度（如 1080P60）\n{up} — UP 主名称\n{date} — 当前日期（YYYY-MM-DD）"
+        >
+          <input
+            value={prefs.filenameTemplate}
+            onChange={(e) => prefs.setFilenameTemplate(e.target.value)}
+            placeholder="{title}_{quality}"
+            style={{ width: '160px', height: '32px', padding: '0 8px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-default)', backgroundColor: 'var(--surface-default)', color: 'var(--text-primary)', fontSize: 'var(--text-body-sm)', outline: 'none' }}
+            onFocus={(e) => { e.currentTarget.style.borderColor = 'var(--color-accent)' }}
+            onBlur={(e) => { e.currentTarget.style.borderColor = 'var(--border-default)' }}
+          />
+        </SettingRow>
+
+        <SettingRow
+          label="下载模式"
+          hint="弹窗 / 内联"
+          info="弹窗：加入下载队列时弹出「仅视频」「仅音频」「分别下载」「合并」四选一对话框。\n内联：清晰度下方直接显示四个下载按钮 + 字幕弹幕开关。输出格式在下方「视频/音频输出格式」设置。"
+        >
+          <SettingsSelect
+            value={prefs.downloadModeStyle}
+            onChange={(v) => prefs.setDownloadModeStyle(v as 'popup' | 'inline')}
+            options={[{ value: 'popup', label: '弹窗' }, { value: 'inline', label: '内联' }]}
           />
         </SettingRow>
       </Section>
 
-      {/* ── About Section ── */}
-      <Section title="关于">
-        <div
-          style={{
-            fontSize: 'var(--text-body-sm)',
-            color: 'var(--text-secondary)',
-            lineHeight: 'var(--text-body-sm-lh)',
-          }}
+      {/* ── 内容 ── */}
+      <Section title="内容">
+        <SettingRow
+          label="同时下载弹幕"
+          hint="随视频下载弹幕 (.xml)"
+          info="开启后每次下载视频会自动保存弹幕为 XML 文件。\n也可在首页 VideoCard 的「附带」行点 ⬇ 单独下载弹幕（不下载视频）。"
         >
-          <p>BilibiliDown v7.0.0</p>
-          <p className="mt-1t" style={{ color: 'var(--text-tertiary)' }}>
-            Electron + React + TypeScript + Tailwind CSS
-          </p>
-          <p className="mt-2t" style={{ color: 'var(--text-tertiary)', fontSize: 'var(--text-caption)' }}>
-            关闭窗口后，应用会最小化到系统托盘继续运行。
-          </p>
-        </div>
-        <div className="px-4t py-3t" style={{ borderTop: '1px solid var(--border-subtle)' }}>
-          <button
-            onClick={() => {
-              const api = window.electronAPI
-              if (api) {
-                api.quitApp()
+          <Toggle checked={prefs.downloadDanmaku} onChange={() => prefs.setDownloadDanmaku(!prefs.downloadDanmaku)} />
+        </SettingRow>
+        <SettingRow
+          label="同时下载字幕"
+          hint="随视频下载字幕 (.srt)"
+          info="开启后每次下载视频会自动保存字幕为 SRT 文件。\n也可在首页 VideoCard 的「附带」行点 ⬇ 单独下载字幕（不下载视频）。"
+        >
+          <Toggle checked={prefs.downloadSubtitle} onChange={() => prefs.setDownloadSubtitle(!prefs.downloadSubtitle)} />
+        </SettingRow>
+        <SettingRow
+          label="显示视频封面"
+          hint="显示视频封面图"
+          info="关闭后解析结果只显示标题和视频信息，不加载封面图片。适合列表密集浏览或网络较慢时使用。"
+        >
+          <Toggle checked={prefs.showCoverImage} onChange={() => prefs.setShowCoverImage(!prefs.showCoverImage)} />
+        </SettingRow>
+      </Section>
+
+      {/* ── 行为 ── */}
+      <Section title="行为">
+        <SettingRow label="同时下载" hint="并行下载任务数 (1–8)">
+          <SliderValue value={prefs.maxConcurrent} min={1} max={8} onChange={(v) => prefs.setMaxConcurrent(v)} />
+        </SettingRow>
+
+        <SettingRow label="最大重试次数" hint="下载失败后自动重试 (1–5)">
+          <SliderValue value={prefs.maxRetries} min={1} max={5} onChange={(v) => prefs.setMaxRetries(v)} />
+        </SettingRow>
+
+        <SettingRow
+          label="自动开始下载"
+          hint="加入队列后立即开始下载"
+          info="开启：视频加入队列后自动按顺序下载（受「同时下载」并发数限制）。\n关闭：加入队列后需手动点击开始按钮。"
+        >
+          <Toggle checked={prefs.autoStart} onChange={() => prefs.setAutoStart(!prefs.autoStart)} />
+        </SettingRow>
+
+        <SettingRow
+          label="下载完成通知"
+          hint="下载完成后弹出系统通知"
+          info="浏览器模式：使用浏览器 Notification API（首次需授权）。\nElectron 桌面版：使用系统原生通知。"
+        >
+          <Toggle
+            checked={prefs.downloadNotify}
+            onChange={() => {
+              const next = !prefs.downloadNotify
+              // 浏览器模式：开启通知前检查/请求 Web Notification 权限
+              if (next && !isElectron() && 'Notification' in window) {
+                if (Notification.permission === 'denied') {
+                  // 已拒绝 — 提示用户手动在浏览器设置中开启
+                  showConfirm({
+                    title: '需要通知权限',
+                    message: '通知权限已被浏览器拒绝。请在浏览器设置中允许本网站的通知权限后再开启此功能。',
+                    confirmText: '知道了',
+                    variant: 'info',
+                  })
+                  return
+                }
+                if (Notification.permission === 'default') {
+                  Notification.requestPermission().then((perm) => {
+                    if (perm === 'granted') {
+                      prefs.setDownloadNotify(true)
+                    }
+                    // denied or dismissed — don't enable
+                  })
+                  return
+                }
               }
+              prefs.setDownloadNotify(next)
             }}
-            className="flex items-center gap-2t px-3t py-2t rounded-md transition-colors duration-fast"
-            style={{
-              fontSize: 'var(--text-body-sm)',
-              color: 'var(--color-error)',
-              backgroundColor: 'transparent',
-              border: 'none',
-              cursor: 'pointer',
-            }}
+          />
+        </SettingRow>
+
+        <SettingRow
+          label={<span>下载后打开文件夹<DesktopOnlyBadge /></span>}
+          hint="完成后打开文件夹"
+          info="仅 Electron 桌面版可用。下载完成后自动在资源管理器中打开文件所在目录。浏览器模式受安全限制无法打开本地文件夹。"
+        >
+          <Toggle checked={prefs.openFolderAfterDownload} onChange={() => prefs.setOpenFolderAfterDownload(!prefs.openFolderAfterDownload)} disabled={!isElectron()} />
+        </SettingRow>
+      </Section>
+
+      {window.electronAPI && (
+        <Section title="启动">
+          <SettingRow
+            label={<span>启动时最小化到托盘<DesktopOnlyBadge /></span>}
+            hint="启动时最小化到托盘"
+            info="仅 Electron 桌面版可用。应用启动后不弹出窗口，直接最小化到系统托盘图标，安静后台运行。"
           >
-            <Power size={16} weight="regular" />
-            退出应用
+            <Toggle checked={prefs.minimizeToTray} onChange={() => prefs.setMinimizeToTray(!prefs.minimizeToTray)} />
+          </SettingRow>
+        </Section>
+      )}
+
+      {/* ── 高级 ── */}
+      <Section title="高级">
+        <div className="flex items-center justify-between px-4t py-3t">
+          <div>
+            <span style={{ fontSize: 'var(--text-body)', color: 'var(--text-primary)' }}>重置所有设置</span>
+            <span className="block mt-0.5" style={{ fontSize: 'var(--text-caption)', color: 'var(--text-tertiary)' }}>
+              恢复偏好为默认值（不删除下载记录）
+            </span>
+          </div>
+          <button onClick={handleReset}
+            className="flex items-center gap-2t px-3t py-1.5 rounded-md transition-all duration-fast"
+            style={{ fontSize: 'var(--text-body-sm)', color: 'var(--text-secondary)', border: '1px solid var(--border-subtle)', background: 'transparent', cursor: 'pointer' }}
+            onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--color-error)'; e.currentTarget.style.borderColor = 'var(--color-error)'; e.currentTarget.style.background = 'var(--color-error-bg)' }}
+            onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-secondary)'; e.currentTarget.style.borderColor = 'var(--border-subtle)'; e.currentTarget.style.background = 'transparent' }}
+          >
+            <ArrowCounterClockwise size={14} /> 重置
           </button>
         </div>
+
+        {window.electronAPI && (
+          <div className="flex items-center justify-between px-4t py-3t" style={{ borderTop: '1px solid var(--border-subtle)' }}>
+            <div>
+              <span style={{ fontSize: 'var(--text-body)', color: 'var(--text-primary)' }}>退出应用</span>
+              <span className="block mt-0.5" style={{ fontSize: 'var(--text-caption)', color: 'var(--text-tertiary)' }}>
+                关闭窗口并退出 BibiliDown
+              </span>
+            </div>
+            <button
+              onClick={() => window.electronAPI!.quitApp()}
+              className="flex items-center gap-2t px-3t py-1.5 rounded-md transition-all duration-fast"
+              style={{ fontSize: 'var(--text-body-sm)', color: 'var(--color-error)', border: '1px solid var(--border-subtle)', background: 'transparent', cursor: 'pointer' }}
+              onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--color-error)'; e.currentTarget.style.background = 'var(--color-error-bg)' }}
+              onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--border-subtle)'; e.currentTarget.style.background = 'transparent' }}
+            >
+              <Power size={14} /> 退出应用
+            </button>
+          </div>
+        )}
       </Section>
     </div>
   )
@@ -195,115 +528,161 @@ export default function SettingsPage() {
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="mb-6t">
-      <h2
-        className="font-medium mb-3t"
-        style={{
-          fontSize: 'var(--text-body)',
-          color: 'var(--text-secondary)',
-          textTransform: 'uppercase',
-          letterSpacing: '0.05em',
-        }}
-      >
+    <div className="mb-5t">
+      <h2 className="flex items-center gap-2t mb-3t" style={{ fontSize: 'var(--text-body)', color: 'var(--text-primary)', fontWeight: 600 }}>
+        <span style={{
+          display: 'inline-block', width: '3px', height: '16px', borderRadius: '2px',
+          backgroundColor: 'var(--color-accent)', flexShrink: 0,
+        }} />
         {title}
       </h2>
-      <div
-        style={{
-          borderRadius: 'var(--radius-xl)',
-          border: '1px solid var(--border-subtle)',
-          backgroundColor: 'var(--surface-default)',
-          overflow: 'hidden',
-        }}
-      >
+      <div style={{ borderRadius: 'var(--radius-xl)', border: '1px solid var(--border-subtle)', backgroundColor: 'var(--surface-default)', overflow: 'hidden' }}>
         {children}
       </div>
     </div>
   )
 }
 
-function SettingRow({
-  label,
-  hint,
-  children,
-}: {
-  label: string
+function SettingRow({ label, hint, info, children }: {
+  label: React.ReactNode
   hint?: string
+  /** 详细说明 — hover 时在 ⓘ 图标上弹出 */
+  info?: string
   children: React.ReactNode
 }) {
   return (
-    <div
-      className="flex items-center justify-between px-4t py-3t"
-      style={{ borderBottom: '1px solid var(--border-subtle)' }}
-    >
+    <div className="flex items-center justify-between px-4t py-3t" style={{ borderBottom: '1px solid var(--border-subtle)' }}>
       <div className="flex-1 mr-4t">
-        <span style={{ fontSize: 'var(--text-body)', color: 'var(--text-primary)' }}>
-          {label}
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+          <span style={{ fontSize: 'var(--text-body-sm)', color: 'var(--text-primary)', fontWeight: 500 }}>{label}</span>
+          {info && <InfoTip text={info} />}
         </span>
-        {hint && (
-          <span
-            className="block mt-0.5"
-            style={{ fontSize: 'var(--text-caption)', color: 'var(--text-tertiary)' }}
-          >
-            {hint}
-          </span>
-        )}
+        {hint && <span className="block mt-0.5" style={{ fontSize: 'var(--text-caption)', color: 'var(--text-tertiary)', lineHeight: '1.4' }}>{hint}</span>}
       </div>
       <div className="flex-shrink-0">{children}</div>
     </div>
   )
 }
 
-function ThemeButton({
-  label,
-  active,
-  onClick,
-}: {
-  label: string
-  active: boolean
-  onClick: () => void
-}) {
+/** ⓘ 小圆圈 — hover 弹出详细说明气泡 */
+function InfoTip({ text }: { text: string }) {
+  const [show, setShow] = useState(false)
   return (
-    <button
-      onClick={onClick}
-      className="px-4t py-2t transition-colors duration-fast"
-      style={{
-        fontSize: 'var(--text-body-sm)',
-        border: 'none',
-        cursor: 'pointer',
-        backgroundColor: active ? 'var(--color-accent)' : 'transparent',
-        color: active ? 'var(--color-accent-text)' : 'var(--text-secondary)',
-      }}
+    <span
+      style={{ position: 'relative', display: 'inline-flex' }}
+      onMouseEnter={() => setShow(true)}
+      onMouseLeave={() => setShow(false)}
     >
+      <span
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          width: '15px',
+          height: '15px',
+          borderRadius: '50%',
+          border: `1px solid ${show ? 'var(--color-accent)' : 'var(--border-strong)'}`,
+          fontSize: '10px',
+          fontWeight: 600,
+          color: show ? 'var(--color-accent)' : 'var(--text-tertiary)',
+          background: show ? 'var(--color-accent-muted)' : 'transparent',
+          lineHeight: 1,
+          cursor: 'help',
+          transition: 'border-color 0.15s, color 0.15s, background 0.15s',
+        }}
+      >
+        ?
+      </span>
+      {/* Tooltip bubble */}
+      <span
+        style={{
+          position: 'absolute',
+          bottom: 'calc(100% + 8px)',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          padding: '6px 10px',
+          borderRadius: 'var(--radius-md)',
+          backgroundColor: 'var(--surface-inverse, #1e1e2e)',
+          color: 'var(--text-inverse, #e0e0e0)',
+          fontSize: '11px',
+          lineHeight: '1.5',
+          whiteSpace: 'pre-wrap',
+          maxWidth: '260px',
+          width: 'max-content',
+          pointerEvents: 'none',
+          opacity: show ? 1 : 0,
+          transition: 'opacity 0.12s',
+          zIndex: 100,
+          boxShadow: '0 4px 12px rgba(0,0,0,0.25)',
+        }}
+      >
+        {text}
+        {/* Arrow */}
+        <span
+          style={{
+            position: 'absolute',
+            top: '100%',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            width: 0,
+            height: 0,
+            borderLeft: '5px solid transparent',
+            borderRight: '5px solid transparent',
+            borderTop: '5px solid var(--surface-inverse, #1e1e2e)',
+          }}
+        />
+      </span>
+    </span>
+  )
+}
+
+function ThemeButton({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
+  return (
+    <button onClick={onClick} className="px-4t py-2t transition-colors duration-fast"
+      style={{ fontSize: 'var(--text-body-sm)', border: 'none', cursor: 'pointer', backgroundColor: active ? 'var(--color-accent)' : 'transparent', color: active ? 'var(--color-accent-text)' : 'var(--text-secondary)' }}>
       {label}
     </button>
   )
 }
 
-function Toggle({ checked, onChange }: { checked: boolean; onChange: () => void }) {
+function Toggle({ checked, onChange, disabled }: { checked: boolean; onChange: () => void; disabled?: boolean }) {
   return (
     <button
-      onClick={onChange}
+      onClick={disabled ? undefined : onChange}
       role="switch"
       aria-checked={checked}
+      disabled={disabled}
       className="relative inline-flex items-center transition-colors duration-fast"
       style={{
         width: '40px',
         height: '22px',
         borderRadius: 'var(--radius-full)',
         border: 'none',
-        cursor: 'pointer',
-        backgroundColor: checked ? 'var(--color-accent)' : 'var(--gray-600)',
+        cursor: disabled ? 'not-allowed' : 'pointer',
+        backgroundColor: disabled ? 'var(--border-subtle)' : (checked ? 'var(--color-accent)' : 'var(--border-strong)'),
         padding: 0,
+        opacity: disabled ? 0.4 : 1,
       }}
     >
-      <span
-        className="inline-block rounded-full bg-white transition-transform duration-fast"
+      <span className="inline-block rounded-full bg-white transition-transform duration-fast"
         style={{
           width: '16px',
           height: '16px',
           transform: checked ? 'translateX(19px)' : 'translateX(3px)',
-        }}
-      />
+          opacity: disabled ? 0.6 : 1,
+        }} />
     </button>
+  )
+}
+
+function SliderValue({ value, min, max, onChange }: { value: number; min: number; max: number; onChange: (v: number) => void }) {
+  return (
+    <div className="flex items-center gap-2t">
+      <input type="range" min={min} max={max} value={value} onChange={(e) => onChange(Number(e.target.value))}
+        style={{ width: '100px', accentColor: 'var(--color-accent)' }} />
+      <span className="font-mono tabular-nums" style={{ fontSize: 'var(--text-body-sm)', color: 'var(--text-primary)', minWidth: '16px', textAlign: 'center' }}>
+        {value}
+      </span>
+    </div>
   )
 }

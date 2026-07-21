@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { persist } from 'zustand/middleware'
 import type { QualityOption } from '../components/QualityChip'
 
 /* ── Types ── */
@@ -58,7 +59,9 @@ interface ParseStore {
 
 /* ── Store ── */
 
-export const useParseStore = create<ParseStore>((set) => ({
+export const useParseStore = create<ParseStore>()(
+  persist(
+    (set) => ({
   videos: [],
   status: 'idle',
   error: null,
@@ -102,4 +105,18 @@ export const useParseStore = create<ParseStore>((set) => ({
     set({ paginationId, paginationPage: page, paginationTotalCount: total }),
 
   setLoadingMore: (loading) => set({ isLoadingMore: loading }),
-}))
+  }),
+    {
+      name: 'bibilidown-parse',
+      /** Opt out of automatic hydration — we manually call rehydrate() in App.tsx
+       *  to avoid the zustand v5 persist infinite re-render cycle. */
+      skipHydration: true,
+      /* Only persist data fields; reset runtime state on reload */
+      partialize: (state) => ({
+        lastUrl: state.lastUrl,
+        videos: state.videos,
+        paginationTotalCount: state.paginationTotalCount,
+      }),
+    }
+  )
+)

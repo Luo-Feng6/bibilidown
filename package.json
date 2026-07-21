@@ -1,7 +1,7 @@
 {
-  "name": "bilibilidown",
-  "version": "7.0.0",
-  "description": "BilibiliDown — Modern Bilibili Video Downloader",
+  "name": "bibilidown",
+  "version": "7.2.0",
+  "description": "BibiliDown — Modern Bilibili Video Downloader",
   "type": "module",
   "main": "electron/main.cjs",
   "scripts": {
@@ -25,8 +25,8 @@
     "zustand": "^5.0.14"
   },
   "build": {
-    "appId": "com.bilibilidown.app",
-    "productName": "BilibiliDown",
+    "appId": "com.bibilidown.app",
+    "productName": "BibiliDown",
     "icon": "build/icon.png",
     "directories": {
       "output": "release"

@@ -1,17 +1,20 @@
-import { useState, useMemo } from 'react'
-import { DownloadSimple, CheckCircle, XCircle, ArrowDown, Tray, CaretDown, CaretRight, CaretLeft } from '@phosphor-icons/react'
+import { useState, useMemo, useRef, useCallback, useEffect } from 'react'
+import { DownloadSimple, CheckCircle, XCircle, ArrowDown, Tray, CaretDown, CaretRight, CaretLeft, SidebarSimple } from '@phosphor-icons/react'
 import DownloadItem, { type DownloadItemData, type DownloadStatus } from './DownloadItem'
 
 interface DownloadPanelProps {
   items: DownloadItemData[]
   collapsed?: boolean
+  panelWidth?: number
   onPause?: (id: string) => void
   onResume?: (id: string) => void
   onCancel?: (id: string) => void
   onRetry?: (id: string) => void
   onClearCompleted?: () => void
+  onClearFailed?: () => void
   onOpenFolder?: (id: string) => void
   onToggleCollapse?: () => void
+  onPanelWidthChange?: (width: number) => void
 }
 
 /* ── Group helpers ── */
@@ -88,32 +91,89 @@ function computeSummary(items: DownloadItemData[]) {
 }
 
 /* ═══════════════════════════════════════════════════════════════
+   Resize Hook
+   ═══════════════════════════════════════════════════════════════ */
+
+const MIN_PANEL_WIDTH = 240
+const MAX_PANEL_WIDTH = 600
+
+function usePanelResize(
+  initialWidth: number,
+  onWidthChange?: (w: number) => void
+) {
+  const [width, setWidth] = useState(initialWidth)
+  const dragging = useRef(false)
+  const startX = useRef(0)
+  const startWidth = useRef(0)
+
+  // Sync external width changes
+  useEffect(() => {
+    setWidth(initialWidth)
+  }, [initialWidth])
+
+  const onMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    dragging.current = true
+    startX.current = e.clientX
+    startWidth.current = width
+
+    const onMouseMove = (ev: MouseEvent) => {
+      if (!dragging.current) return
+      const delta = startX.current - ev.clientX // drag left = shrink panel
+      const newWidth = Math.min(MAX_PANEL_WIDTH, Math.max(MIN_PANEL_WIDTH, startWidth.current + delta))
+      setWidth(newWidth)
+    }
+
+    const onMouseUp = () => {
+      if (!dragging.current) return
+      dragging.current = false
+      document.removeEventListener('mousemove', onMouseMove)
+      document.removeEventListener('mouseup', onMouseUp)
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+      // Save final width
+      onWidthChange?.(width)
+    }
+
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
+    document.addEventListener('mousemove', onMouseMove)
+    document.addEventListener('mouseup', onMouseUp)
+  }, [width, onWidthChange])
+
+  return { width, onMouseDown }
+}
+
+/* ═══════════════════════════════════════════════════════════════
    DownloadPanel
    ═══════════════════════════════════════════════════════════════ */
 
 /**
  * DownloadPanel — right-side Acrylic panel managing the download queue.
  *
- * Visual spec §8.6 / UX spec §3.4:
- * - 320px wide, glass-panel (Acrylic) background
- * - Groups: 进行中 (always expanded), 已完成 (collapsed when > 5), 失败 (always expanded)
- * - Header with count badge, clear completed, collapse toggle
+ * Features:
+ * - Groups: 进行中 / 已完成 / 失败, collapsible groups
+ * - Resizable: drag the left edge to adjust width (240px–600px)
+ * - Collapsible: toggle to hide/show the panel
+ * - Batch operations: clear completed, clear failed
  * - Empty state when no items
  * - Footer summary bar
  */
 export default function DownloadPanel({
   items,
   collapsed = false,
+  panelWidth: propPanelWidth,
   onPause,
   onResume,
   onCancel,
   onRetry,
   onClearCompleted,
+  onClearFailed,
   onOpenFolder,
   onToggleCollapse,
+  onPanelWidthChange,
 }: DownloadPanelProps) {
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => {
-    // Initialize: collapse completed group if > 5 items
     const groups = groupItems(items)
     const collapsed = new Set<string>()
     for (const g of groups) {
@@ -125,6 +185,8 @@ export default function DownloadPanel({
   const groups = useMemo(() => groupItems(items), [items])
   const summary = useMemo(() => computeSummary(items), [items])
 
+  const { width, onMouseDown } = usePanelResize(propPanelWidth ?? 320, onPanelWidthChange)
+
   const toggleGroup = (key: string) => {
     setCollapsedGroups((prev) => {
       const next = new Set(prev)
@@ -134,19 +196,86 @@ export default function DownloadPanel({
     })
   }
 
+  /* ── Collapsed state: show narrow tab ── */
+  if (collapsed) {
+    return (
+      <aside
+        className="glass-panel flex-shrink-0 flex flex-col items-center border-l"
+        style={{ width: '36px' }}
+      >
+        {/* Expand button at top */}
+        <button
+          onClick={onToggleCollapse}
+          className="flex items-center justify-center mt-2t"
+          style={{
+            width: '28px', height: '28px',
+            borderRadius: 'var(--radius-sm)',
+            background: 'none', border: 'none',
+            cursor: 'pointer', color: 'var(--text-tertiary)',
+          }}
+          aria-label="展开下载面板"
+          title={`${summary.active.length} 进行中 | ${summary.completed.length} 已完成${summary.failed.length > 0 ? ` | ${summary.failed.length} 失败` : ''}`}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.color = 'var(--text-primary)'
+            e.currentTarget.style.backgroundColor = 'var(--surface-overlay)'
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.color = 'var(--text-tertiary)'
+            e.currentTarget.style.backgroundColor = 'transparent'
+          }}
+        >
+          <SidebarSimple size={16} weight="regular" />
+        </button>
+
+        {/* Badge counts */}
+        {summary.active.length > 0 && (
+          <span style={{
+            marginTop: '6px', fontSize: '10px', fontWeight: 600,
+            color: 'var(--color-accent)',
+            writingMode: 'vertical-rl',
+          }}>
+            {summary.active.length}
+          </span>
+        )}
+        {summary.failed.length > 0 && (
+          <span style={{
+            marginTop: '4px', fontSize: '10px', fontWeight: 600,
+            color: 'var(--color-error)',
+            writingMode: 'vertical-rl',
+          }}>
+            {summary.failed.length}
+          </span>
+        )}
+      </aside>
+    )
+  }
+
   /* ── Empty state ── */
   if (items.length === 0) {
     return (
       <aside
         className="glass-panel flex-shrink-0 overflow-y-auto border-l flex flex-col"
-        style={{ width: 'var(--panel-width)' }}
+        style={{ width: `${width}px` }}
       >
+        {/* Resize handle */}
+        <div
+          onMouseDown={onMouseDown}
+          className="absolute left-0 top-0 bottom-0"
+          style={{
+            width: '4px', cursor: 'col-resize', zIndex: 20,
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'rgba(var(--color-accent-rgb, 59, 130, 246), 0.3)' }}
+          onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent' }}
+        />
+
         {/* Header */}
         <Header
           activeCount={0}
           hasCompleted={false}
+          hasFailed={false}
           collapsed={collapsed}
           onClearCompleted={onClearCompleted}
+          onClearFailed={onClearFailed}
           onToggleCollapse={onToggleCollapse}
         />
 
@@ -173,22 +302,8 @@ export default function DownloadPanel({
           >
             解析视频后点击
             <span style={{ color: 'var(--color-accent)' }}>「加入下载队列」</span>
+            {' '}开始下载
           </p>
-
-          {/* Hint: supported link types */}
-          <div
-            className="mt-6t px-3t py-2t rounded-md"
-            style={{
-              fontSize: 'var(--text-caption)',
-              lineHeight: '1.6',
-              color: 'var(--text-tertiary)',
-              textAlign: 'left',
-              backgroundColor: 'var(--surface-overlay)',
-              borderRadius: 'var(--radius-md)',
-            }}
-          >
-            支持: BV号 · av号 · ep · ss · md · ml · 合集链接
-          </div>
         </div>
       </aside>
     )
@@ -197,15 +312,28 @@ export default function DownloadPanel({
   /* ── Populated panel ── */
   return (
     <aside
-      className="glass-panel flex-shrink-0 overflow-y-auto border-l flex flex-col"
-      style={{ width: 'var(--panel-width)' }}
+      className="glass-panel flex-shrink-0 overflow-y-auto border-l flex flex-col relative"
+      style={{ width: `${width}px` }}
     >
+      {/* Resize drag handle — left edge */}
+      <div
+        onMouseDown={onMouseDown}
+        style={{
+          position: 'absolute', left: 0, top: 0, bottom: 0,
+          width: '5px', cursor: 'col-resize', zIndex: 20,
+        }}
+        onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'rgba(var(--color-accent-rgb, 59, 130, 246), 0.25)' }}
+        onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent' }}
+      />
+
       {/* Header */}
       <Header
         activeCount={summary.active.length}
         hasCompleted={summary.completed.length > 0}
+        hasFailed={summary.failed.length > 0}
         collapsed={collapsed}
         onClearCompleted={onClearCompleted}
+        onClearFailed={onClearFailed}
         onToggleCollapse={onToggleCollapse}
       />
 
@@ -310,14 +438,18 @@ export default function DownloadPanel({
 function Header({
   activeCount,
   hasCompleted,
+  hasFailed,
   collapsed,
   onClearCompleted,
+  onClearFailed,
   onToggleCollapse,
 }: {
   activeCount: number
   hasCompleted: boolean
+  hasFailed: boolean
   collapsed: boolean
   onClearCompleted?: () => void
+  onClearFailed?: () => void
   onToggleCollapse?: () => void
 }) {
   return (
@@ -355,6 +487,34 @@ function Header({
       </div>
 
       <div className="flex items-center" style={{ gap: '2px' }}>
+        {/* Clear failed */}
+        {hasFailed && onClearFailed && (
+          <button
+            onClick={onClearFailed}
+            className="transition-colors duration-fast"
+            style={{
+              fontSize: 'var(--text-caption)',
+              color: 'var(--text-tertiary)',
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              padding: '4px 6px',
+              borderRadius: 'var(--radius-sm)',
+            }}
+            title="清空所有失败项"
+            onMouseEnter={(e) => {
+              e.currentTarget.style.color = 'var(--color-error)'
+              e.currentTarget.style.backgroundColor = 'var(--color-error-bg)'
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.color = 'var(--text-tertiary)'
+              e.currentTarget.style.backgroundColor = 'transparent'
+            }}
+          >
+            ✕失败
+          </button>
+        )}
+
         {/* Clear completed */}
         {hasCompleted && onClearCompleted && (
           <button
@@ -369,9 +529,10 @@ function Header({
               padding: '4px 8px',
               borderRadius: 'var(--radius-sm)',
             }}
+            title="清空所有已完成项"
             onMouseEnter={(e) => {
               e.currentTarget.style.color = 'var(--text-primary)'
-              e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.06)'
+              e.currentTarget.style.backgroundColor = 'var(--surface-overlay)'
             }}
             onMouseLeave={(e) => {
               e.currentTarget.style.color = 'var(--text-tertiary)'
@@ -398,16 +559,17 @@ function Header({
               borderRadius: 'var(--radius-sm)',
             }}
             aria-label={collapsed ? '展开下载面板' : '收起下载面板'}
+            title="收起下载面板"
             onMouseEnter={(e) => {
               e.currentTarget.style.color = 'var(--text-primary)'
-              e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.06)'
+              e.currentTarget.style.backgroundColor = 'var(--surface-overlay)'
             }}
             onMouseLeave={(e) => {
               e.currentTarget.style.color = 'var(--text-tertiary)'
               e.currentTarget.style.backgroundColor = 'transparent'
             }}
           >
-            {collapsed ? <CaretLeft size={14} weight="regular" /> : <CaretRight size={14} weight="regular" />}
+            <CaretRight size={14} weight="regular" />
           </button>
         )}
       </div>

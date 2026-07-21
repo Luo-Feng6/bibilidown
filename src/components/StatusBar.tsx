@@ -15,8 +15,10 @@ export default function StatusBar({ onLoginClick }: StatusBarProps) {
   const cookieStatus = useUserPrefsStore((s) => s.cookieStatus)
   const cookieUsername = useUserPrefsStore((s) => s.cookieUsername)
   const loginName = useUserPrefsStore((s) => s.loginName)
+  const loginFace = useUserPrefsStore((s) => s.loginFace)
 
   const displayName = cookieUsername ?? loginName
+  const isDesktop = typeof window !== 'undefined' && !!(window as any).electronAPI
 
   return (
     <footer
@@ -30,8 +32,37 @@ export default function StatusBar({ onLoginClick }: StatusBarProps) {
         borderTop: '1px solid var(--border-subtle)',
       }}
     >
-      {/* Left: Connection status + version */}
+      {/* Left: Mode indicator + connection status + version */}
       <div className="flex items-center gap-2t">
+        {/* Platform mode indicator */}
+        <span
+          style={{
+            fontSize: '10px',
+            color: 'var(--text-tertiary)',
+            opacity: 0.7,
+          }}
+          title={isDesktop ? undefined : '部分功能仅桌面版可用'}
+        >
+          {isDesktop ? '\u{1F5A5}️ 桌面版' : '\u{1F310} 浏览器模式'}
+        </span>
+        <span style={{ color: 'var(--text-disabled)' }}>·</span>
+
+        {/* Login hint */}
+        {!displayName && (
+          <>
+            <span
+              style={{
+                fontSize: '10px',
+                color: 'var(--text-tertiary)',
+                opacity: 0.7,
+              }}
+            >
+              {'\u{1F512} 未登录 — 仅480P'}
+            </span>
+            <span style={{ color: 'var(--text-disabled)' }}>·</span>
+          </>
+        )}
+
         <span
           className="inline-block rounded-full flex-shrink-0"
           style={{
@@ -42,7 +73,7 @@ export default function StatusBar({ onLoginClick }: StatusBarProps) {
         />
         <span>就绪</span>
         <span style={{ color: 'var(--text-disabled)' }}>·</span>
-        <span>v7.0.0</span>
+        <span>v7.2.0</span>
         {cookieStatus === 'expired' && (
           <>
             <span style={{ color: 'var(--text-disabled)' }}>·</span>
@@ -53,7 +84,7 @@ export default function StatusBar({ onLoginClick }: StatusBarProps) {
                 cursor: 'pointer',
                 background: 'none',
                 border: 'none',
-                color: '#D97706',
+                color: 'var(--color-warning)',
                 fontSize: 'inherit',
               }}
             >
@@ -66,24 +97,31 @@ export default function StatusBar({ onLoginClick }: StatusBarProps) {
       {/* Center: Download queue summary */}
       <div className="flex items-center gap-2t">
         <span>下载队列 {activeCount()}/{totalCount}</span>
-        <span style={{ color: 'var(--text-disabled)' }}>·</span>
-        <span>总计 —</span>
       </div>
 
-      {/* Right: Login status */}
-      <button
-        onClick={onLoginClick}
-        className="transition-colors duration-fast hover:underline"
-        style={{
-          cursor: 'pointer',
-          background: 'none',
-          border: 'none',
-          color: 'inherit',
-          fontSize: 'inherit',
-        }}
-      >
-        {displayName ? displayName : '未登录'}
-      </button>
+      {/* Right: version info */}
+      <div className="flex items-center gap-2t">
+        {displayName && (
+          <div className="flex items-center gap-1.5t">
+            {loginFace ? (
+              <img
+                src={loginFace}
+                alt={displayName}
+                referrerPolicy="no-referrer"
+                crossOrigin="anonymous"
+                style={{
+                  width: '16px',
+                  height: '16px',
+                  borderRadius: '50%',
+                  objectFit: 'cover',
+                }}
+                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
+              />
+            ) : null}
+            <span>{displayName}</span>
+          </div>
+        )}
+      </div>
     </footer>
   )
 }

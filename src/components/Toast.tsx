@@ -10,31 +10,31 @@ const TOAST_CONFIG: Record<
 > = {
   success: {
     icon: CheckCircle,
-    iconColor: 'var(--color-success, #22c55e)',
-    bg: 'rgba(34, 197, 94, 0.08)',
-    border: 'rgba(34, 197, 94, 0.25)',
-    progressColor: 'var(--color-success, #22c55e)',
+    iconColor: 'var(--color-success)',
+    bg: 'var(--color-success-bg)',
+    border: 'var(--color-success)',
+    progressColor: 'var(--color-success)',
   },
   error: {
     icon: XCircle,
-    iconColor: 'var(--color-error, #ef4444)',
-    bg: 'rgba(239, 68, 68, 0.08)',
-    border: 'rgba(239, 68, 68, 0.25)',
-    progressColor: 'var(--color-error, #ef4444)',
+    iconColor: 'var(--color-error)',
+    bg: 'var(--color-error-bg)',
+    border: 'var(--color-error)',
+    progressColor: 'var(--color-error)',
   },
   warning: {
     icon: Warning,
-    iconColor: 'var(--color-warning, #f59e0b)',
-    bg: 'rgba(245, 158, 11, 0.08)',
-    border: 'rgba(245, 158, 11, 0.25)',
-    progressColor: 'var(--color-warning, #f59e0b)',
+    iconColor: 'var(--color-warning)',
+    bg: 'var(--color-warning-bg)',
+    border: 'var(--color-warning)',
+    progressColor: 'var(--color-warning)',
   },
   info: {
     icon: Info,
-    iconColor: 'var(--color-accent, #3b82f6)',
-    bg: 'rgba(59, 130, 246, 0.08)',
-    border: 'rgba(59, 130, 246, 0.25)',
-    progressColor: 'var(--color-accent, #3b82f6)',
+    iconColor: 'var(--color-accent)',
+    bg: 'var(--color-accent-muted)',
+    border: 'rgba(var(--color-accent-rgb), 0.25)',
+    progressColor: 'var(--color-accent)',
   },
 }
 
@@ -137,7 +137,7 @@ function ToastItem({ toast }: { toast: ReturnType<typeof useToastStore.getState>
         }}
         onMouseEnter={(e) => {
           e.currentTarget.style.color = 'var(--text-primary)'
-          e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.08)'
+          e.currentTarget.style.backgroundColor = 'var(--surface-overlay)'
         }}
         onMouseLeave={(e) => {
           e.currentTarget.style.color = 'var(--text-tertiary)'

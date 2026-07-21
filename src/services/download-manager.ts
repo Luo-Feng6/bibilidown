@@ -14,10 +14,19 @@
 
 import { useDownloadStore } from '../stores/downloadStore'
 import { useUserPrefsStore } from '../stores/userPrefsStore'
+import { useParseStore } from '../stores/parseStore'
 import { useToastStore } from '../stores/toastStore'
 import { useHistoryStore } from '../stores/historyStore'
-import { resolveDownloadUrl, QN_LABEL_MAP } from './bilibili-api'
+import { resolveDownloadUrl, QN_LABEL_MAP, fetchDanmaku, fetchSubtitle } from './bilibili-api'
 import type { DownloadItemData } from '../components/DownloadItem'
+
+/* ── Augment ElectronAPI for features not yet in electron.d.ts ── */
+declare global {
+  interface ElectronAPI {
+    /** Save plain text content to a file on disk. */
+    saveTextFile(path: string, content: string): Promise<{ success: boolean; error?: string }>
+  }
+}
 
 /* ── 内部状态 ── */
 
@@ -68,7 +77,7 @@ function updateTrayFromStore(): void {
       ? `${stats.completed} 个完成, ${failed} 个失败`
       : `全部 ${stats.completed} 个视频下载完成`
     window.electronAPI!.sendTrayNotification({
-      title: 'BilibiliDown',
+      title: 'BibiliDown',
       body,
     })
   }
@@ -121,6 +130,52 @@ function sanitizeFileName(name: string): string {
 }
 
 /**
+ * 根据用户设定的文件名模板生成文件名。
+ *
+ * 支持的占位符:
+ *   {title}   — 视频标题
+ *   {bvid}    — BV 号
+ *   {quality} — 清晰度标签
+ *   {up}      — UP主名称（从 parseStore 中匹配）
+ *   {date}    — 当前日期 YYYY-MM-DD
+ *
+ * @param template 用户设定的模板字符串（如 "{title}_{quality}"）
+ * @param item     当前下载项数据
+ * @returns 替换占位符后的文件名（未 sanitize）
+ */
+function applyFilenameTemplate(template: string, item: DownloadItemData): string {
+  if (!template || typeof template !== 'string' || template.trim().length === 0) {
+    return `${item.title}_${item.quality}`
+  }
+
+  // 查找 UP 主名称：从 parseStore 中匹配 bvid
+  let upName = ''
+  if (item.bvid) {
+    const videos = useParseStore.getState().videos
+    const matched = videos.find((v) => v.bvid === item.bvid || v.id === item.id)
+    upName = matched?.upName ?? ''
+  }
+
+  // 当前日期 YYYY-MM-DD
+  const now = new Date()
+  const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+
+  let result = template
+    .replace(/\{title\}/g, item.title)
+    .replace(/\{bvid\}/g, item.bvid ?? '')
+    .replace(/\{quality\}/g, item.quality)
+    .replace(/\{up\}/g, upName)
+    .replace(/\{date\}/g, dateStr)
+
+  // 如果模板替换后结果为空或与模板相同（没有任何占位符被替换），回退
+  if (!result.trim() || result === template) {
+    return `${item.title}_${item.quality}`
+  }
+
+  return result
+}
+
+/**
  * 将完成的下载记录到历史。
  */
 function recordToHistory(item: DownloadItemData, status: 'completed' | 'failed', errorMessage?: string): void {
@@ -128,6 +183,7 @@ function recordToHistory(item: DownloadItemData, status: 'completed' | 'failed',
     id: item.id,
     title: item.title,
     bvid: item.bvid,
+    inputUrl: item.inputUrl,
     quality: item.quality,
     format: item.format,
     size: item.totalSize,
@@ -197,6 +253,22 @@ function triggerBrowserDownload(blob: Blob, fileName: string): void {
   URL.revokeObjectURL(downloadUrl)
 }
 
+/**
+ * 通过 Blob + <a download> 触发文本文件下载。
+ * 用于浏览器模式下的弹幕 (XML) 和字幕 (SRT) 下载。
+ */
+function triggerTextDownload(content: string, filename: string): void {
+  const blob = new Blob([content], { type: 'text/plain;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+}
+
 /* ── 核心下载处理 ── */
 
 /**
@@ -205,72 +277,120 @@ function triggerBrowserDownload(blob: Blob, fileName: string): void {
 async function processDownload(item: DownloadItemData): Promise<void> {
   const store = useDownloadStore.getState()
   const id = item.id
+  const maxRetries = useUserPrefsStore.getState().maxRetries || 3
 
-  // 创建 AbortController
-  const controller = new AbortController()
-  activeDownloads.set(id, controller)
+  let lastError: Error | null = null
 
-  try {
-    const qn = qualityLabelToQn(item.quality)
-    const bvid = item.bvid
-    const cid = item.cid
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    // 创建 AbortController（每次尝试新建）
+    const controller = new AbortController()
+    activeDownloads.set(id, controller)
 
-    if (!bvid || !cid) {
+    try {
+      // 非首次尝试：显示重试状态
+      if (attempt > 0) {
+        store.updateItem(id, {
+          speed: `重试中 (${attempt + 1}/${maxRetries})...`,
+        })
+      }
+
+      const qn = qualityLabelToQn(item.quality)
+      const bvid = item.bvid
+      const cid = item.cid
+
+      if (!bvid || !cid) {
+        store.updateItem(id, {
+          status: 'failed',
+          errorMessage: '缺少视频标识（bvid/cid），无法下载。请重新解析视频。',
+        })
+        return
+      }
+
+      // Step 1: 标记 downloading + 解析链接
       store.updateItem(id, {
-        status: 'failed',
-        errorMessage: '缺少视频标识（bvid/cid），无法下载。请重新解析视频。',
+        status: 'downloading',
+        progress: 0,
+        speed: attempt > 0 ? `重试中 (${attempt + 1}/${maxRetries})...` : '解析链接中...',
+        eta: '',
       })
+
+      const urlResult = await resolveDownloadUrl(bvid, String(cid), qn)
+
+      // 更新清晰度（实际获取到的可能不同）
+      const actualQualityLabel = QN_TO_LABEL[urlResult.quality] ?? item.quality
+
+      store.updateItem(id, {
+        quality: actualQualityLabel,
+        totalSize: '获取中...',
+        speed: '下载中...',
+        eta: '',
+      })
+
+      const referer = `https://www.bilibili.com/video/${bvid}`
+
+      if (isElectron()) {
+        // ═══ Electron 模式: IPC 写入磁盘 + FFmpeg 合并 ═══
+        await processDownloadElectron(item, urlResult, bvid, cid, referer, controller)
+      } else {
+        // ═══ 浏览器模式: Blob + <a>.click() ═══
+        await processDownloadBrowser(item, urlResult, referer, controller)
+      }
+
+      // 成功 — 退出函数
       return
+    } catch (err: any) {
+      lastError = err
+
+      // 用户取消 — 不重试
+      if (err.name === 'AbortError') {
+        return
+      }
+
+      const msg = err.message || ''
+
+      // 鉴权错误 (401/403) — 不重试
+      if (msg.includes('401') || msg.includes('403')) {
+        break
+      }
+
+      // 只重试网络错误，不重试其他错误（如 FFmpeg 合并失败）
+      const isNetworkError =
+        err instanceof TypeError ||
+        msg.includes('fetch failed') ||
+        msg.includes('NetworkError') ||
+        msg.includes('Failed to fetch')
+
+      if (!isNetworkError) {
+        break
+      }
+
+      // 还剩重试次数：等待后继续
+      if (attempt < maxRetries - 1) {
+        store.updateItem(id, {
+          speed: `重试中 (${attempt + 1}/${maxRetries})...`,
+        })
+        await new Promise(r => setTimeout(r, 2000))
+        continue
+      }
+      // 最后一次尝试也失败了
+      break
+    } finally {
+      activeDownloads.delete(id)
     }
-
-    // Step 1: 标记 downloading + 解析链接
-    store.updateItem(id, {
-      status: 'downloading',
-      progress: 0,
-      speed: '解析链接中...',
-      eta: '',
-    })
-
-    const urlResult = await resolveDownloadUrl(bvid, String(cid), qn)
-
-    // 更新清晰度（实际获取到的可能不同）
-    const actualQualityLabel = QN_TO_LABEL[urlResult.quality] ?? item.quality
-
-    store.updateItem(id, {
-      quality: actualQualityLabel,
-      totalSize: '获取中...',
-      speed: '下载中...',
-      eta: '',
-    })
-
-    const referer = `https://www.bilibili.com/video/${bvid}`
-
-    if (isElectron()) {
-      // ═══ Electron 模式: IPC 写入磁盘 + FFmpeg 合并 ═══
-      await processDownloadElectron(item, urlResult, bvid, cid, referer, controller)
-    } else {
-      // ═══ 浏览器模式: Blob + <a>.click() ═══
-      await processDownloadBrowser(item, urlResult, referer, controller)
-    }
-  } catch (err: any) {
-    if (err.name === 'AbortError') {
-      return
-    }
-
-    const errorMsg = err.message || '下载失败'
-    store.updateItem(id, {
-      status: 'failed',
-      errorMessage: errorMsg,
-      speed: '',
-      eta: '',
-    })
-
-    useToastStore.getState().error(`下载失败: ${item.title} — ${errorMsg}`)
-    console.error(`[DownloadManager] 失败: ${item.title}`, err)
-    recordToHistory(item, 'failed', errorMsg)
-  } finally {
-    activeDownloads.delete(id)
   }
+
+  // 所有重试已耗尽
+  const errorMsg = lastError?.message || '下载失败'
+  store.updateItem(id, {
+    status: 'failed',
+    errorMessage: errorMsg,
+    speed: '',
+    eta: '',
+  })
+
+  useToastStore.getState().error(`下载失败: ${item.title} — ${errorMsg}`)
+  console.error(`[DownloadManager] 失败: ${item.title}`, lastError)
+  recordToHistory(item, 'failed', errorMsg)
 }
 
 /**
@@ -294,142 +414,315 @@ async function processDownloadElectron(
 
   // 获取 temp 目录
   const tempDir = await api.getTempDir()
-  const safeName = sanitizeFileName(item.title)
+  const fileNameTemplate = useUserPrefsStore.getState().filenameTemplate
+  const safeName = sanitizeFileName(applyFilenameTemplate(fileNameTemplate, item))
+  const prefs = useUserPrefsStore.getState()
+  const videoExt = prefs.preferredFormat === 'm4s' ? 'm4s' : 'mp4'
+  const audioFormat = prefs.preferredAudioFormat || 'm4a'
+  const audioExt = audioFormat === 'm4s' ? 'm4s' : audioFormat === 'mp3' ? 'mp3' : 'm4a'
   const videoTempPath = `${tempDir}/${item.id}_video.m4s`
   const audioTempPath = `${tempDir}/${item.id}_audio.m4s`
 
-  let videoDownloaded = false
-  let audioDownloaded = false
-  let videoSize = 0
-  let audioSize = 0
-  let totalSize = 0
+  // 跟踪两个流的下载进度
+  let videoProgress = { downloaded: 0, total: 0, speed: 0 }
+  let audioProgress = { downloaded: 0, total: 0, speed: 0 }
   const speedHistory: number[] = []
+  let lastProgressUpdate = 0
 
-  // Phase 1: 下载视频流
-  if (urlResult.videoUrl) {
-    store.updateItem(id, { speed: '下载视频流...' })
-
-    const result = await api.saveToDisk({
-      url: urlResult.videoUrl,
-      filePath: videoTempPath,
-      referer,
-    })
-
-    if (!result.success) {
-      throw new Error(`视频流下载失败: ${result.error}`)
+  // 注册进度监听器（在任何下载开始之前）
+  // 消费主进程发出的 download:progress 事件，实时更新进度条、速度和 speedHistory
+  const cleanupProgress = api.onDownloadProgress((data) => {
+    if (data.filePath === videoTempPath) {
+      videoProgress = { downloaded: data.downloadedSize, total: data.totalSize, speed: data.speed }
+    } else if (data.filePath === audioTempPath) {
+      audioProgress = { downloaded: data.downloadedSize, total: data.totalSize, speed: data.speed }
     }
 
-    videoDownloaded = true
-    videoSize = result.size
+    const combinedDownloaded = videoProgress.downloaded + audioProgress.downloaded
+    const combinedTotal = videoProgress.total + audioProgress.total
+    const combinedSpeed = videoProgress.speed + audioProgress.speed
 
-    store.updateItem(id, {
-      progress: 50,
-      downloadedSize: formatSize(result.size),
-      totalSize: '获取中...',
-      speed: '',
-    })
-  }
+    // 限制 store 更新频率（~200ms），避免并行双流时过度刷新
+    const now = Date.now()
+    if (now - lastProgressUpdate < 200) return
+    lastProgressUpdate = now
 
-  // Phase 2: 下载音频流
-  if (urlResult.audioUrl) {
-    store.updateItem(id, { speed: '下载音频流...' })
+    if (combinedTotal > 0) {
+      speedHistory.push(combinedSpeed / 1e6)
+      if (speedHistory.length > 20) speedHistory.shift()
 
-    const result = await api.saveToDisk({
-      url: urlResult.audioUrl,
-      filePath: audioTempPath,
-      referer,
-    })
+      const progress = Math.round((combinedDownloaded / combinedTotal) * 100)
+      const eta = combinedSpeed > 0 ? formatEta(Math.round((combinedTotal - combinedDownloaded) / combinedSpeed)) : ''
 
-    if (!result.success) {
-      throw new Error(`音频流下载失败: ${result.error}`)
-    }
-
-    audioDownloaded = true
-    audioSize = result.size
-    totalSize = videoSize + audioSize
-
-    store.updateItem(id, {
-      progress: 70,
-      downloadedSize: formatSize(totalSize),
-      speed: '',
-    })
-  } else {
-    // 无分离音频（如 FLV）
-    totalSize = videoSize
-  }
-
-  // Phase 3: FFmpeg 合并（如果需要）
-  if (videoDownloaded && audioDownloaded) {
-    store.updateItem(id, { speed: '合并音视频...' })
-
-    // 让用户选择保存路径
-    const outputPath = await api.showSaveDialog(
-      `${safeName}_${urlResult.quality}P.mp4`
-    )
-
-    if (!outputPath) {
-      // 用户取消了保存对话框
       store.updateItem(id, {
-        status: 'paused',
+        progress: Math.min(progress, 99),
+        downloadedSize: formatSize(combinedDownloaded),
+        totalSize: formatSize(combinedTotal),
+        speed: combinedSpeed > 0 ? formatSpeed(combinedSpeed) : '下载中...',
+        eta,
+        speedHistory: [...speedHistory],
+      })
+    }
+  })
+
+  try {
+    let videoResult: SaveToDiskResult | null = null
+    let audioResult: SaveToDiskResult | null = null
+
+    // Phase 1+2: 根据下载模式决定下载哪些流
+    const mode = item.downloadMode || 'auto'
+    const wantVideo = mode !== 'audio-only' && !!urlResult.videoUrl
+    const wantAudio = (mode === 'auto' || mode === 'separate' || mode === 'merge') && !!urlResult.audioUrl
+    // 'auto'/'merge' 模式下有音频就合并，否则只下载视频
+
+    type DownloadTask = Promise<{ type: 'video' | 'audio'; result: SaveToDiskResult }>
+    const downloads: DownloadTask[] = []
+
+    if (wantVideo) {
+      downloads.push(
+        api.saveToDisk({
+          url: urlResult.videoUrl!,
+          filePath: videoTempPath,
+          referer,
+          headers: { Cookie: (useUserPrefsStore.getState().cookieStr) },
+        }).then((result) => ({ type: 'video' as const, result }))
+      )
+    }
+
+    if (wantAudio) {
+      downloads.push(
+        api.saveToDisk({
+          url: urlResult.audioUrl!,
+          filePath: audioTempPath,
+          referer,
+          headers: { Cookie: (useUserPrefsStore.getState().cookieStr) },
+        }).then((result) => ({ type: 'audio' as const, result }))
+      )
+    }
+
+    store.updateItem(id, { speed: '下载中...' })
+
+    // 等待所有流并行下载完成
+    const results = await Promise.all(downloads)
+
+    for (const { type, result } of results) {
+      if (type === 'video') {
+        videoResult = result
+      } else {
+        audioResult = result
+      }
+
+      if (!result.success) {
+        throw new Error(`${type === 'video' ? '视频' : '音频'}流下载失败: ${result.error}`)
+      }
+    }
+
+    const videoDownloaded = videoResult !== null
+    const audioDownloaded = audioResult !== null
+    const videoSize = videoResult?.size ?? 0
+    const audioSize = audioResult?.size ?? 0
+    const totalSize = videoSize + audioSize
+
+    const mergeMode = item.downloadMode || 'auto'
+    let finalOutputPath: string | null = null
+
+    // Phase 3: FFmpeg 合并（auto / merge 模式且双流都下载了）
+    if (videoDownloaded && audioDownloaded && (mergeMode === 'auto' || mergeMode === 'merge')) {
+      store.updateItem(id, {
+        progress: 70,
+        downloadedSize: formatSize(totalSize),
+        totalSize: formatSize(totalSize),
+        speed: '合并音视频...',
+      })
+
+      // 让用户选择保存路径
+      const outputPath = await api.showSaveDialog(
+        `${safeName}_${urlResult.quality}P.mp4`
+      )
+
+      if (!outputPath) {
+        // 用户取消了保存对话框
+        store.updateItem(id, {
+          status: 'paused',
+          speed: '',
+          eta: '',
+        })
+        return
+      }
+
+      const mergeResult = await api.mergeWithFfmpeg({
+        videoPath: videoTempPath,
+        audioPath: audioTempPath,
+        outputPath,
+      })
+
+      if (!mergeResult.success) {
+        throw new Error(mergeResult.error || 'FFmpeg 合并失败')
+      }
+
+      // 成功
+      finalOutputPath = outputPath
+      store.updateItem(id, {
+        status: 'completed',
+        progress: 100,
         speed: '',
         eta: '',
+        downloadedSize: formatSize(totalSize),
+        totalSize: formatSize(totalSize),
+        savedPath: finalOutputPath,
       })
-      return
+      useToastStore.getState().success(`下载完成: ${item.title}`)
+      recordToHistory(item, 'completed')
+    } else if (videoDownloaded) {
+      // 只有视频（如 FLV），直接保存到用户选择的位置
+      store.updateItem(id, {
+        progress: 70,
+        downloadedSize: formatSize(totalSize),
+        totalSize: formatSize(totalSize),
+        speed: '',
+      })
+
+      const outputPath = await api.showSaveDialog(
+        `${safeName}_${urlResult.quality}P.mp4`
+      )
+
+      if (!outputPath) {
+        store.updateItem(id, { status: 'paused', speed: '', eta: '' })
+        return
+      }
+
+      // 将 temp 文件移动到用户选择的最终路径
+      await api.moveFile({ from: videoTempPath, to: outputPath })
+      finalOutputPath = outputPath
+
+      store.updateItem(id, {
+        status: 'completed',
+        progress: 100,
+        speed: '',
+        eta: '',
+        downloadedSize: formatSize(totalSize),
+        totalSize: formatSize(totalSize),
+        savedPath: finalOutputPath,
+      })
+      useToastStore.getState().success(`下载完成: ${item.title}`)
+      recordToHistory(item, 'completed')
+    } else if (videoDownloaded && audioDownloaded) {
+      // 'separate' 模式：双流分别保存，不合并
+      const videoOut = await api.showSaveDialog(`${safeName}_视频.${videoExt}`)
+      if (videoOut) await api.moveFile({ from: videoTempPath, to: videoOut })
+      const audioOut = await api.showSaveDialog(`${safeName}_音频.${audioExt}`)
+      if (audioOut) await api.moveFile({ from: audioTempPath, to: audioOut })
+      finalOutputPath = videoOut || audioOut
+
+      store.updateItem(id, {
+        status: 'completed', progress: 100, speed: '', eta: '',
+        downloadedSize: formatSize(totalSize), totalSize: formatSize(totalSize),
+        errorMessage: '音视频分别保存。下次选「自动合并」可合并为一个文件。',
+        savedPath: finalOutputPath || undefined,
+      })
+      useToastStore.getState().success(`下载完成 (视频+音频): ${item.title}`)
+      recordToHistory(item, 'completed', '视频+音频(分别)')
+    } else if (audioDownloaded && !videoDownloaded) {
+      // 'audio-only' 模式：仅音频
+      const outputPath = await api.showSaveDialog(`${safeName}.${audioExt}`)
+      if (!outputPath) { store.updateItem(id, { status: 'paused', speed: '', eta: '' }); return }
+      await api.moveFile({ from: audioTempPath, to: outputPath })
+      finalOutputPath = outputPath
+
+      store.updateItem(id, {
+        status: 'completed', progress: 100, speed: '', eta: '',
+        downloadedSize: formatSize(totalSize), totalSize: formatSize(totalSize),
+        savedPath: finalOutputPath,
+      })
+      useToastStore.getState().success(`下载完成 (仅音频): ${item.title}`)
+      recordToHistory(item, 'completed', '仅音频')
+    } else {
+      // 没下载到任何流
+      throw new Error('未获取到任何可下载的流')
     }
 
-    const mergeResult = await api.mergeWithFfmpeg({
-      videoPath: videoTempPath,
-      audioPath: audioTempPath,
-      outputPath,
-    })
-
-    if (!mergeResult.success) {
-      throw new Error(mergeResult.error || 'FFmpeg 合并失败')
+    // Post-download: danmaku, subtitle, notify, open folder
+    if (finalOutputPath) {
+      await handlePostDownloadTasksElectron(item, bvid, cid, finalOutputPath)
     }
 
-    // 成功
-    store.updateItem(id, {
-      status: 'completed',
-      progress: 100,
-      speed: '',
-      eta: '',
-      downloadedSize: formatSize(totalSize),
-      totalSize: formatSize(totalSize),
-    })
-    useToastStore.getState().success(`下载完成: ${item.title}`)
-    recordToHistory(item, 'completed')
-  } else if (videoDownloaded) {
-    // 只有视频（如 FLV），直接保存到用户选择的位置
-    const outputPath = await api.showSaveDialog(
-      `${safeName}_${urlResult.quality}P.mp4`
-    )
+    console.log(`[DownloadManager] Electron 完成 (${mergeMode}): ${item.title}`)
+  } finally {
+    // 确保无论成功失败都清理进度监听器
+    cleanupProgress()
+  }
+}
 
-    if (!outputPath) {
-      store.updateItem(id, { status: 'paused', speed: '', eta: '' })
-      return
+/**
+ * Electron 模式下载后处理：弹幕、字幕、通知、打开文件夹。
+ */
+async function handlePostDownloadTasksElectron(
+  item: DownloadItemData,
+  bvid: string,
+  cid: number,
+  outputPath: string
+): Promise<void> {
+  const prefs = useUserPrefsStore.getState()
+  const api = window.electronAPI!
+
+  // 从输出路径中推导基础路径（去除扩展名）
+  const basePath = outputPath.replace(/\.(mp4|m4a|m4s|flv|mkv)$/i, '')
+
+  // 弹幕
+  if (prefs.downloadDanmaku) {
+    try {
+      const xml = await fetchDanmaku(cid)
+      if (xml) {
+        const danmakuPath = `${basePath}_danmaku.xml`
+        await api.saveTextFile(danmakuPath, xml)
+        console.log(`[DownloadManager] 弹幕已保存: ${danmakuPath}`)
+      }
+    } catch (e) {
+      console.warn('[DownloadManager] 弹幕下载失败:', e)
     }
-
-    // 将 temp 文件移动到用户选择的最终路径
-    await api.moveFile({ from: videoTempPath, to: outputPath })
-
-    store.updateItem(id, {
-      status: 'completed',
-      progress: 100,
-      speed: '',
-      eta: '',
-      downloadedSize: formatSize(totalSize),
-      totalSize: formatSize(totalSize),
-    })
-    useToastStore.getState().success(`下载完成: ${item.title}`)
-    recordToHistory(item, 'completed')
   }
 
-  console.log(`[DownloadManager] Electron 完成: ${item.title}`)
+  // 字幕
+  if (prefs.downloadSubtitle) {
+    try {
+      const srt = await fetchSubtitle(bvid, cid)
+      if (srt) {
+        const subtitlePath = `${basePath}_subtitle.srt`
+        await api.saveTextFile(subtitlePath, srt)
+        console.log(`[DownloadManager] 字幕已保存: ${subtitlePath}`)
+      }
+    } catch (e) {
+      console.warn('[DownloadManager] 字幕下载失败:', e)
+    }
+  }
+
+  // 下载完成通知
+  if (prefs.downloadNotify) {
+    try {
+      await api.sendTrayNotification({
+        title: 'BibiliDown',
+        body: `下载完成: ${item.title}`,
+      })
+    } catch {
+      // 通知失败不影响主流程
+    }
+  }
+
+  // 下载完成后打开文件夹
+  if (prefs.openFolderAfterDownload) {
+    try {
+      const folderPath = outputPath.replace(/[/\\][^/\\]+$/, '')
+      await api.openPath(folderPath)
+    } catch {
+      // 打开文件夹失败不影响主流程
+    }
+  }
 }
 
 /**
  * 浏览器模式下载流程。
- * 使用 Blob + <a>.click() 触发浏览器下载。
+ * 浏览器无 FFmpeg，DASH 音视频分离流需要用户选择下载方式。
+ * FLV 单流视频也会弹窗让用户确认（避免静默下载的困惑）。
  */
 async function processDownloadBrowser(
   item: DownloadItemData,
@@ -439,88 +732,330 @@ async function processDownloadBrowser(
 ): Promise<void> {
   const store = useDownloadStore.getState()
   const id = item.id
-  const safeName = sanitizeFileName(item.title)
+  const fileNameTemplate = useUserPrefsStore.getState().filenameTemplate
+  const safeName = sanitizeFileName(applyFilenameTemplate(fileNameTemplate, item))
+  const hasVideo = !!urlResult.videoUrl
+  const hasAudio = !!urlResult.audioUrl
+  const isDash = urlResult.format === 'dash'
 
-  let lastLoaded = 0
-  let lastTime = Date.now()
-  const speedHistory: number[] = []
+  // 如果加入队列时已选好模式，跳过弹窗
+  let mode: 'video-only' | 'audio-only' | 'separate' | 'merge'
+  if (item.downloadMode && item.downloadMode !== 'auto') {
+    mode = item.downloadMode
+  } else {
+    mode = await showDownloadChoiceDialog(safeName, isDash, hasVideo, hasAudio, item.title)
+  }
+  store.updateItem(id, { downloadMode: mode })
 
-  // 下载视频流
-  if (urlResult.videoUrl) {
-    const videoBlob = await downloadWithProgress(
-      urlResult.videoUrl,
-      referer,
-      (loaded, total) => {
-        const now = Date.now()
-        const elapsed = (now - lastTime) / 1000
-        if (elapsed >= 0.5) {
-          const speed = (loaded - lastLoaded) / elapsed
-          lastLoaded = loaded
-          lastTime = now
-          speedHistory.push(speed / 1e6)
-          if (speedHistory.length > 20) speedHistory.shift()
+  // 浏览器模式：'merge' 实际按 'separate' 处理（无法真正合并）
+  const effectiveMode = mode === 'merge' ? 'separate' : mode
 
-          const progress = total > 0 ? Math.round((loaded / total) * 100) : 0
-          const eta = speed > 0 ? formatEta(Math.round((total - loaded) / speed)) : ''
+  // 根据选择决定下载哪些流
+  const wantVideo = effectiveMode !== 'audio-only' && hasVideo
+  const wantAudio = effectiveMode === 'audio-only' || effectiveMode === 'separate' ? hasAudio : false
 
-          store.updateItem(id, {
-            progress: Math.min(progress, 99),
-            downloadedSize: formatSize(loaded),
-            totalSize: formatSize(total),
-            speed: formatSpeed(speed),
-            eta,
-            speedHistory: [...speedHistory],
-          })
-        }
-      },
-      controller.signal
-    )
+  // 使用 downloadWithProgress（ReadableStream 分段读取 + 实时进度）
+  const tryDownloadWithFallback = async (primaryUrl: string, backups: string[], filename: string): Promise<Blob | null> => {
+    const urls = [primaryUrl, ...backups].filter(Boolean)
+    let lastError: any = null
 
-    // 触发浏览器下载
-    if (urlResult.format === 'flv') {
-      triggerBrowserDownload(videoBlob, `${safeName}.flv`)
-    } else {
-      triggerBrowserDownload(videoBlob, `${safeName}_video.m4s`)
+    for (let i = 0; i < urls.length; i++) {
+      const url = urls[i]
+      try {
+        const startTime = Date.now()
+        let lastLoaded = 0
+        let lastTime = startTime
+
+        if (i > 0) store.updateItem(id, { speed: `切换备用链接 (${i + 1}/${urls.length})...` })
+        else store.updateItem(id, { speed: '下载中...' })
+
+        const blob = await downloadWithProgress(
+          url,
+          referer,
+          (loaded, total) => {
+            const now = Date.now()
+            if (now - lastTime < 200) return
+
+            const elapsed = (now - startTime) / 1000
+            const displaySpeed = elapsed > 0 ? loaded / elapsed : 0
+
+            const progress = total > 0 ? Math.round((loaded / total) * 100) : 0
+            const eta = displaySpeed > 0 && total > 0
+              ? formatEta(Math.round((total - loaded) / displaySpeed))
+              : ''
+
+            store.updateItem(id, {
+              progress: Math.min(progress, 99),
+              speed: formatSpeed(displaySpeed),
+              eta,
+              downloadedSize: formatSize(loaded),
+              totalSize: total > 0 ? formatSize(total) : '获取中...',
+            })
+
+            lastLoaded = loaded
+            lastTime = now
+          },
+          controller.signal
+        )
+
+        return blob
+      } catch (err: any) {
+        if (err.name === 'AbortError') throw err
+        lastError = err
+        console.warn(`[DownloadManager] URL ${i + 1}/${urls.length} 失败: ${filename}`, err.message)
+      }
     }
+
+    // 所有 URL 都失败，降级为直接下载
+    console.warn(`[DownloadManager] 全部 URL 失败，降级为直接下载: ${filename}`, lastError?.message)
+    triggerBrowserDownloadDirect(primaryUrl, filename)
+    return null
   }
 
-  // 下载音频流（如果有）
-  if (urlResult.audioUrl && urlResult.format === 'dash') {
-    try {
-      const audioBlob = await downloadWithProgress(
-        urlResult.audioUrl,
-        referer,
-        () => {},
-        controller.signal
-      )
-      triggerBrowserDownload(audioBlob, `${safeName}_audio.m4s`)
+  // 下载选中流
+  let videoBlob: Blob | null = null
+  let audioBlob: Blob | null = null
 
-      // 提示用户需要手动合并
-      store.updateItem(id, {
-        status: 'completed',
-        progress: 100,
-        speed: '需手动合并',
-        eta: '',
-        errorMessage: '浏览器模式下音视频分离。请使用 Electron 版自动合并，或手动用 FFmpeg/格式工厂合并。',
-      })
-      recordToHistory(item, 'completed', '浏览器模式下音视频分离')
-      return
-    } catch {
-      // 音频下载失败不阻塞视频完成
-    }
+  const videoBackups = urlResult.videoBackups ?? []
+  const audioBackups = urlResult.audioBackups ?? []
+
+  const dl: Promise<{ type: string; blob: Blob | null }>[] = []
+  if (wantVideo) {
+    dl.push(tryDownloadWithFallback(urlResult.videoUrl!, videoBackups, `${safeName}.mp4`).then(b => ({ type: 'video', blob: b })))
+  }
+  if (wantAudio) {
+    dl.push(tryDownloadWithFallback(urlResult.audioUrl!, audioBackups, `${safeName}_audio.m4s`).then(b => ({ type: 'audio', blob: b })))
   }
 
-  // 标记完成
+  const results = await Promise.all(dl)
+  videoBlob = results.find(r => r.type === 'video')?.blob ?? null
+  audioBlob = results.find(r => r.type === 'audio')?.blob ?? null
+
+  // 输出格式：从设置读取视频/音频格式偏好
+  const prefs = useUserPrefsStore.getState()
+  const outputFormat = prefs.preferredFormat || 'mp4'
+  const videoExt = outputFormat === 'm4s' ? 'm4s' : 'mp4'
+  const audioFormat = prefs.preferredAudioFormat || 'm4a'
+  const audioExt = audioFormat === 'm4s' ? 'm4s' : audioFormat === 'mp3' ? 'mp3' : 'm4a'
+
+  // 触发浏览器本地保存
+  if (videoBlob) {
+    triggerBrowserDownload(videoBlob, `${safeName}.${videoExt}`)
+  }
+  if (audioBlob) {
+    triggerBrowserDownload(audioBlob, `${safeName}.${audioExt}`)
+  }
+
+  // 状态更新
+  const gotAnyBlob = !!(videoBlob || audioBlob)
   store.updateItem(id, {
     status: 'completed',
     progress: 100,
-    speed: '',
+    speed: gotAnyBlob ? '' : '已触发下载',
     eta: '',
+    errorMessage: mode === 'separate'
+      ? '音视频分别下载。用桌面版可自动合并。'
+      : mode === 'merge'
+        ? `音视频已分别下载。使用 FFmpeg 合并: ffmpeg -i video.${videoExt} -i audio.${audioExt} -c copy output.mp4`
+        : undefined,
+    savedPath: `${safeName}.${mode === 'audio-only' ? audioExt : videoExt}`,
   })
 
-  useToastStore.getState().success(`下载完成: ${item.title}`)
-  console.log(`[DownloadManager] 浏览器完成: ${item.title}`)
-  recordToHistory(item, 'completed')
+  const labelMap: Record<string, string> = { 'video-only': '仅视频', 'audio-only': '仅音频', 'separate': '视频+音频', 'merge': '视频+音频(合并)' }
+  const label = labelMap[mode] || '视频'
+  if (gotAnyBlob) {
+    useToastStore.getState().success(`下载完成 (${label}): ${item.title}`)
+  } else {
+    useToastStore.getState().info(`已触发下载 (${label}): ${item.title}`)
+  }
+  console.log(`[DownloadManager] 浏览器完成 (${mode}): ${item.title}`)
+  recordToHistory(item, 'completed', mode !== 'video-only' ? label : undefined)
+
+  // Post-download: danmaku & subtitle (browser mode — no system notify or open folder)
+  const bvid = item.bvid!
+  const cid = item.cid!
+  if (prefs.downloadDanmaku) {
+    try {
+      const xml = await fetchDanmaku(cid)
+      if (xml) {
+        triggerTextDownload(xml, `${safeName}_danmaku.xml`)
+      }
+    } catch (e) {
+      console.warn('[DownloadManager] 弹幕下载失败:', e)
+    }
+  }
+  if (prefs.downloadSubtitle) {
+    try {
+      const srt = await fetchSubtitle(bvid, cid)
+      if (srt) {
+        triggerTextDownload(srt, `${safeName}_subtitle.srt`)
+      }
+    } catch (e) {
+      console.warn('[DownloadManager] 字幕下载失败:', e)
+    }
+  }
+}
+
+/**
+ * 下载确认弹窗 — 浏览器模式始终显示，按格式自适应选项。
+ *
+ * DASH + 音视频双流：📹仅视频 / 🎵仅音频 / 📦分别下载（三选一）
+ * DASH + 仅视频流：📹仅视频 / 🎵仅音频（如果有音频）
+ * FLV 单流：📹下载视频（单流，音视频已合并）
+ * 仅音频流：🎵仅音频
+ */
+export function showDownloadChoiceDialog(
+  title: string,
+  isDash: boolean,
+  hasVideo: boolean,
+  hasAudio: boolean,
+  fullTitle: string
+): Promise<'video-only' | 'audio-only' | 'separate' | 'merge'> {
+  const titleText = fullTitle || title
+
+  // 纯音频流 → 直接返回
+  if (!hasVideo && hasAudio) {
+    return Promise.resolve('audio-only')
+  }
+
+  // 纯视频流（无音频的 DASH 或 FLV）
+  if (hasVideo && !hasAudio) {
+    return new Promise((resolve) => {
+      const overlay = document.createElement('div')
+      overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:center;justify-content:center'
+      const box = document.createElement('div')
+      box.style.cssText = 'background:var(--surface-default);border:1px solid var(--border-subtle);border-radius:12px;padding:24px;max-width:380px;width:90%;box-shadow:0 16px 48px rgba(0,0,0,0.4)'
+      const formatLabel = isDash ? 'DASH 单视频流（无独立音轨）' : 'FLV 单流格式（音视频已合并）'
+      box.innerHTML = `
+        <p style="margin:0 0 4px;font-size:13px;color:var(--text-tertiary)">确认下载 · ${formatLabel}</p>
+        <p style="margin:0 0 20px;font-size:14px;color:var(--text-primary);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${titleText}">${titleText}</p>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <button data-choice="video-only" style="padding:12px 16px;border:2px solid var(--color-accent);border-radius:10px;background:var(--color-accent-muted);color:var(--text-primary);cursor:pointer;font-size:14px;text-align:left;display:flex;align-items:center;gap:10px">
+            <span style="font-size:18px">📹</span><div><b>下载视频</b><br><span style="font-size:12px;color:var(--text-tertiary)">完整视频文件，无需额外操作</span></div></button>
+        </div>
+        <p style="margin:14px 0 0;font-size:12px;color:var(--text-tertiary);text-align:center">💡 这是单流格式，音视频已合并，下载即完整视频</p>
+      `
+      overlay.appendChild(box)
+      document.body.appendChild(overlay)
+
+      const cleanup = () => { if (overlay.parentNode) document.body.removeChild(overlay) }
+      box.querySelector('button')!.addEventListener('click', () => { cleanup(); resolve('video-only') })
+      overlay.addEventListener('click', (e) => { if (e.target === overlay) { cleanup(); resolve('video-only') } })
+    })
+  }
+
+  // DASH 双流：音视频分离，需要用户选择
+  return new Promise((resolve) => {
+    const overlay = document.createElement('div')
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:center;justify-content:center'
+    const box = document.createElement('div')
+    box.style.cssText = 'background:var(--surface-default);border:1px solid var(--border-subtle);border-radius:12px;padding:24px;max-width:380px;width:90%;box-shadow:0 16px 48px rgba(0,0,0,0.4)'
+    box.innerHTML = `
+      <p style="margin:0 0 4px;font-size:13px;color:var(--text-tertiary)">此视频音视频分离 (DASH)，请选择下载方式</p>
+      <p style="margin:0 0 20px;font-size:14px;color:var(--text-primary);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${titleText}">${titleText}</p>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <button data-choice="video-only" style="padding:12px 16px;border:1px solid var(--border-default);border-radius:10px;background:var(--surface-default);color:var(--text-primary);cursor:pointer;font-size:14px;text-align:left;display:flex;align-items:center;gap:10px">
+          <span style="font-size:18px">📹</span><div><b>仅视频</b><br><span style="font-size:12px;color:var(--text-tertiary)">只需画面，静音下载</span></div></button>
+        <button data-choice="audio-only" style="padding:12px 16px;border:1px solid var(--border-default);border-radius:10px;background:var(--surface-default);color:var(--text-primary);cursor:pointer;font-size:14px;text-align:left;display:flex;align-items:center;gap:10px">
+          <span style="font-size:18px">🎵</span><div><b>仅音频</b><br><span style="font-size:12px;color:var(--text-tertiary)">提取声音，保存为 .m4a (AAC)</span></div></button>
+        <button data-choice="separate" style="padding:12px 16px;border:1px solid var(--border-default);border-radius:10px;background:var(--surface-default);color:var(--text-primary);cursor:pointer;font-size:14px;text-align:left;display:flex;align-items:center;gap:10px">
+          <span style="font-size:18px">📦</span><div><b>都要（分别下载）</b><br><span style="font-size:12px;color:var(--text-tertiary)">下载视频和音频两个独立文件</span></div></button>
+        <button data-choice="merge" style="padding:12px 16px;border:1px solid var(--border-default);border-radius:10px;background:var(--surface-default);color:var(--text-primary);cursor:pointer;font-size:14px;text-align:left;display:flex;align-items:center;gap:10px">
+          <span style="font-size:18px">🔗</span><div><b>合并（视频+音频合成一个文件）</b><br><span style="font-size:12px;color:var(--text-tertiary)">视频+音频合成为一个文件</span></div></button>
+      </div>
+      <p style="margin:14px 0 0;font-size:12px;color:var(--warning-600);text-align:center;background:var(--warning-50);border:1px solid var(--warning-400);border-radius:8px;padding:8px 12px;line-height:1.5">⚠️ 浏览器模式不支持音视频合并。如需自动合并，请使用桌面版 (Electron)</p>
+    `
+    overlay.appendChild(box)
+    document.body.appendChild(overlay)
+
+    const cleanup = () => { if (overlay.parentNode) document.body.removeChild(overlay) }
+
+    box.querySelectorAll('button').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const choice = btn.getAttribute('data-choice') as 'video-only' | 'audio-only' | 'separate' | 'merge'
+        if (choice === 'merge' && !window.electronAPI) {
+          // 浏览器模式：弹出警告对话框
+          cleanup()
+          const result = await showMergeWarningDialog()
+          resolve(result)
+        } else {
+          cleanup()
+          resolve(choice)
+        }
+      })
+      btn.addEventListener('mouseenter', () => { btn.style.borderColor = 'var(--color-accent)'; btn.style.background = 'var(--color-accent-muted)' })
+      btn.addEventListener('mouseleave', () => { btn.style.borderColor = 'var(--border-default)'; btn.style.background = 'var(--surface-default)' })
+    })
+
+    // 点击遮罩关闭 → 默认仅视频
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) { cleanup(); resolve('video-only') } })
+  })
+}
+
+/**
+ * 浏览器模式不支持合并的警告弹窗。
+ * 当用户在浏览器模式下点击「合并」按钮时显示。
+ * 返回用户选择的方案：'separate'（下载两个文件）或 'video-only'（取消）。
+ */
+function showMergeWarningDialog(): Promise<'separate' | 'video-only'> {
+  return new Promise((resolve) => {
+    const overlay = document.createElement('div')
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:10000;display:flex;align-items:center;justify-content:center'
+    const box = document.createElement('div')
+    box.style.cssText = 'background:var(--surface-default);border:1px solid var(--border-subtle);border-radius:12px;padding:24px;max-width:440px;width:90%;box-shadow:0 16px 48px rgba(0,0,0,0.4)'
+    box.innerHTML = `
+      <p style="margin:0 0 8px;font-size:15px;color:var(--text-primary);font-weight:600">⚠️ 浏览器模式不支持自动合并</p>
+      <p style="margin:0 0 16px;font-size:13px;color:var(--text-secondary);line-height:1.7">
+        浏览器无法自动合并音视频文件。<br><br>
+        下载后你会得到两个文件：<br>
+        &nbsp;&nbsp;• 视频文件 (.mp4) — 没有声音<br>
+        &nbsp;&nbsp;• 音频文件 (.m4a) — 只有声音<br><br>
+        💡 <b>推荐方案：</b><br>
+        1. 使用 BilibiliDown 桌面版 (Electron)，支持 FFmpeg 自动合成<br>
+        2. 或下载后用 FFmpeg 命令手动合并：<br>
+        <code style="display:block;margin:6px 0 0;padding:6px 10px;background:var(--surface-overlay);border-radius:6px;font-family:'Cascadia Code','Fira Code','JetBrains Mono',Consolas,monospace;font-size:12px;color:var(--text-secondary);word-break:break-all">ffmpeg -i 视频.mp4 -i 音频.m4a -c copy 输出.mp4</code>
+      </p>
+      <p style="margin:0 0 20px;font-size:13px;color:var(--text-primary);font-weight:500">是否下载视频+音频两个文件？</p>
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button id="merge-warn-cancel" style="padding:10px 20px;border:1px solid var(--border-default);border-radius:8px;background:var(--surface-default);color:var(--text-secondary);cursor:pointer;font-size:14px;font-weight:500">取消</button>
+        <button id="merge-warn-confirm" style="padding:10px 20px;border:none;border-radius:8px;background:var(--color-accent);color:var(--color-accent-text);cursor:pointer;font-size:14px;font-weight:600">下载两个文件</button>
+      </div>
+    `
+    overlay.appendChild(box)
+    document.body.appendChild(overlay)
+
+    const cleanup = () => { if (overlay.parentNode) document.body.removeChild(overlay) }
+
+    box.querySelector('#merge-warn-confirm')!.addEventListener('click', () => {
+      cleanup()
+      resolve('separate')
+    })
+
+    box.querySelector('#merge-warn-cancel')!.addEventListener('click', () => {
+      cleanup()
+      resolve('video-only')
+    })
+
+    // 点击遮罩关闭 → 取消
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) {
+        cleanup()
+        resolve('video-only')
+      }
+    })
+  })
+}
+
+/** 通过 <a download> 直接下载 URL（绕过 CORS，无进度） */
+function triggerBrowserDownloadDirect(url: string, filename: string): void {
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  a.target = '_blank'
+  a.style.display = 'none'
+  document.body.appendChild(a)
+  a.click()
+  setTimeout(() => document.body.removeChild(a), 1000)
 }
 
 /**
@@ -556,28 +1091,44 @@ export function startDownloadManager(): void {
   if (isRunning) return
   isRunning = true
 
-  // 立即检查一次
-  processQueue()
+  // 检查 autoStart 设置：如果关闭，不启动下载循环，但 manager 保持初始化
+  const autoStart = useUserPrefsStore.getState().autoStart
 
-  // 每秒轮询
-  pollTimer = setInterval(() => {
+  if (autoStart) {
+    // 立即检查一次
     processQueue()
-  }, 1000)
 
-  // 监听 store 变化：当有新 queued 项时立即处理，同时更新托盘状态
+    // 每秒轮询
+    pollTimer = setInterval(() => {
+      processQueue()
+    }, 1000)
+  }
+
+  // 监听 store 变化：当有新 queued 项时，仅 autoStart 开启时才自动处理
+  // 始终推送统计到系统托盘
   unsubStore = useDownloadStore.subscribe((state, prev) => {
+    const shouldAutoProcess = useUserPrefsStore.getState().autoStart
+
     const newQueued = state.items.filter(
       (d) => d.status === 'queued' && !prev.items.find((p) => p.id === d.id && p.status === 'queued')
     )
-    if (newQueued.length > 0) {
+    if (newQueued.length > 0 && shouldAutoProcess) {
       processQueue()
     }
 
-    // 检查是否有 paused 项转为 queued（恢复下载）
+    // 检查是否有 paused 项转为 queued（恢复下载）—— 仅 autoStart 时自动恢复
     const resumed = state.items.filter(
       (d) => d.status === 'queued' && prev.items.find((p) => p.id === d.id && p.status === 'paused')
     )
-    if (resumed.length > 0) {
+    if (resumed.length > 0 && shouldAutoProcess) {
+      processQueue()
+    }
+
+    // 检查是否有下载完成/失败项（释放队列槽位），立即启动下一个
+    const justFinished = prev.items.filter(
+      (d) => d.status === 'downloading' && !state.items.find((s) => s.id === d.id && s.status === 'downloading')
+    )
+    if (justFinished.length > 0 && shouldAutoProcess) {
       processQueue()
     }
 
@@ -585,7 +1136,7 @@ export function startDownloadManager(): void {
     updateTrayFromStore()
   })
 
-  console.log('[DownloadManager] 已启动')
+  console.log(`[DownloadManager] 已启动 (autoStart: ${autoStart})`)
 
   // Initialize tray with current download state
   updateTrayFromStore()

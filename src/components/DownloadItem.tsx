@@ -35,6 +35,12 @@ export interface DownloadItemData {
   bvid?: string
   /** 分P cid（下载时需要） */
   cid?: number
+  /** 用户输入的原始链接地址 */
+  inputUrl?: string
+  /** 下载模式：auto(合并)/video-only(仅视频)/audio-only(仅音频)/separate(分别下载)/merge(合并) */
+  downloadMode?: 'auto' | 'video-only' | 'audio-only' | 'separate' | 'merge'
+  /** 下载完成后文件保存路径（不持久化，刷新后可能无效） */
+  savedPath?: string
 }
 
 interface DownloadItemProps {
@@ -150,7 +156,7 @@ function IconButton({
       onMouseEnter={(e) => {
         e.currentTarget.style.backgroundColor = destructive
           ? 'var(--color-error-bg)'
-          : 'rgba(255,255,255,0.06)'
+          : 'var(--surface-overlay)'
         e.currentTarget.style.color = destructive
           ? 'var(--color-error)'
           : 'var(--text-primary)'
@@ -232,11 +238,41 @@ export default function DownloadItem({
               fontSize: 'var(--text-body)',
               color: 'var(--text-primary)',
               fontWeight: isActive ? 500 : 400,
+              ...(isDone && onOpenFolder ? {
+                cursor: 'pointer',
+                textDecoration: 'none',
+              } : {}),
             }}
-            title={item.title}
+            title={isDone ? '点击打开文件位置' : item.title}
+            onClick={isDone && onOpenFolder ? () => onOpenFolder(item.id) : undefined}
+            onMouseEnter={(e) => {
+              if (isDone && onOpenFolder) {
+                e.currentTarget.style.textDecoration = 'underline'
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (isDone && onOpenFolder) {
+                e.currentTarget.style.textDecoration = 'none'
+              }
+            }}
           >
             {item.title}
           </span>
+          {/* 下载模式标签（仅排队中的 DASH 项显示） */}
+          {item.downloadMode && item.downloadMode !== 'auto' && item.status === 'queued' && (
+            <span style={{
+              fontSize: '10px',
+              padding: '1px 6px',
+              borderRadius: 'var(--radius-full, 999px)',
+              backgroundColor: 'var(--color-accent-muted)',
+              color: 'var(--color-accent)',
+              fontWeight: 600,
+              whiteSpace: 'nowrap',
+              flexShrink: 0,
+            }}>
+              {{ 'video-only': '📹 仅视频', 'audio-only': '🎵 仅音频', 'separate': '📦 分别下', 'merge': '🔗 合并' }[item.downloadMode]}
+            </span>
+          )}
         </div>
 
         {/* Control buttons */}
@@ -258,14 +294,26 @@ export default function DownloadItem({
             </>
           )}
           {isFailed && (
-            <IconButton label="重试" onClick={() => onRetry?.(item.id)}>
-              <ArrowCounterClockwise size={16} weight="regular" />
-            </IconButton>
+            <>
+              <IconButton label="重试" onClick={() => onRetry?.(item.id)}>
+                <ArrowCounterClockwise size={16} weight="regular" />
+              </IconButton>
+              <IconButton label="删除" onClick={() => onCancel?.(item.id)} destructive>
+                <X size={16} weight="regular" />
+              </IconButton>
+            </>
           )}
-          {isDone && onOpenFolder && (
-            <IconButton label="打开文件夹" onClick={() => onOpenFolder?.(item.id)}>
-              <FolderOpen size={16} weight="regular" />
-            </IconButton>
+          {isDone && (
+            <>
+              {onOpenFolder && (
+                <IconButton label="打开文件夹" onClick={() => onOpenFolder?.(item.id)}>
+                  <FolderOpen size={16} weight="regular" />
+                </IconButton>
+              )}
+              <IconButton label="删除" onClick={() => onCancel?.(item.id)} destructive>
+                <X size={16} weight="regular" />
+              </IconButton>
+            </>
           )}
           {isQueued && (
             <IconButton label="取消" onClick={() => onCancel?.(item.id)} destructive>

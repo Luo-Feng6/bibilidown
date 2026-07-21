@@ -1,6 +1,9 @@
 import { useState, useCallback } from 'react'
-import { FilmStrip, User, Eye, Clock, Calendar, X, CaretRight } from '@phosphor-icons/react'
+import { User, Eye, Clock, Calendar, X, ImageSquare, DownloadSimple } from '@phosphor-icons/react'
 import QualityChip, { type QualityOption } from './QualityChip'
+import { useUserPrefsStore } from '../stores/userPrefsStore'
+import { fetchDanmaku, fetchSubtitle } from '../services/bilibili-api'
+import { useToastStore } from '../stores/toastStore'
 
 interface VideoCardProps {
   coverUrl: string
@@ -10,8 +13,16 @@ interface VideoCardProps {
   duration: string
   date: string
   qualities: QualityOption[]
+  /** B站 BV 号（字幕/弹幕独立下载时需要） */
+  bvid?: string
+  /** 分P cid（字幕/弹幕独立下载时需要） */
+  cid?: number
   onClose?: () => void
   onAddToQueue?: (quality: QualityOption) => void
+  downloadModeStyle?: 'popup' | 'inline'
+  onAddToQueueWithMode?: (quality: QualityOption, mode: 'video-only' | 'audio-only' | 'separate' | 'merge') => void
+  onNavigateToSettings?: () => void
+  showCoverImage?: boolean
 }
 
 /**
@@ -33,8 +44,14 @@ export default function VideoCard({
   duration,
   date,
   qualities,
+  bvid,
+  cid,
   onClose,
   onAddToQueue,
+  downloadModeStyle = 'popup',
+  onAddToQueueWithMode,
+  onNavigateToSettings,
+  showCoverImage = true,
 }: VideoCardProps) {
   const [selectedIndex, setSelectedIndex] = useState(() =>
     Math.max(
@@ -44,9 +61,54 @@ export default function VideoCard({
   )
   const [focusedIndex, setFocusedIndex] = useState<number | null>(null)
   const [isHovered, setIsHovered] = useState(false)
-  const [showAdvanced, setShowAdvanced] = useState(false)
+  const [imgLoading, setImgLoading] = useState(true)
+  const [imgError, setImgError] = useState(false)
 
   const selectedQuality = qualities[selectedIndex]
+
+  /** 独立下载弹幕 XML 文件（不下载视频） */
+  const handleDownloadDanmaku = async () => {
+    if (!bvid || cid == null) return
+    const toast = useToastStore.getState()
+    try {
+      const xml = await fetchDanmaku(cid)
+      if (xml) {
+        const safeName = title.replace(/[<>:"/\\|?*]/g, '_')
+        const blob = new Blob([xml], { type: 'application/xml;charset=utf-8' })
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url; a.download = `${safeName}_danmaku.xml`; a.click()
+        URL.revokeObjectURL(url)
+        toast.success('弹幕已下载')
+      } else {
+        toast.warning('该视频暂无弹幕')
+      }
+    } catch {
+      toast.error('弹幕下载失败')
+    }
+  }
+
+  /** 独立下载字幕 SRT 文件（不下载视频） */
+  const handleDownloadSubtitle = async () => {
+    if (!bvid || cid == null) return
+    const toast = useToastStore.getState()
+    try {
+      const srt = await fetchSubtitle(bvid, cid)
+      if (srt) {
+        const safeName = title.replace(/[<>:"/\\|?*]/g, '_')
+        const blob = new Blob([srt], { type: 'text/plain;charset=utf-8' })
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url; a.download = `${safeName}_subtitle.srt`; a.click()
+        URL.revokeObjectURL(url)
+        toast.success('字幕已下载')
+      } else {
+        toast.warning('该视频暂无字幕')
+      }
+    } catch {
+      toast.error('字幕下载失败')
+    }
+  }
 
   /* ── Keyboard navigation within chip group ── */
   const handleChipKeyDown = useCallback(
@@ -94,32 +156,59 @@ export default function VideoCard({
     >
       {/* ── Top row: Cover + Info ── */}
       <div className="flex gap-4t">
-        {/* Cover placeholder */}
+        {/* Cover: loading → image → fallback on error */}
+        {showCoverImage && (
         <div
-          className="flex-shrink-0 flex items-center justify-center overflow-hidden"
+          className="flex-shrink-0 flex items-center justify-center overflow-hidden relative"
           style={{
             width: '280px',
             height: '158px',
             borderRadius: 'var(--radius-lg)',
-            backgroundColor: 'var(--gray-800)',
-            color: 'var(--text-tertiary)',
-            fontSize: 'var(--text-body-sm)',
+            backgroundColor: 'var(--surface-overlay)',
           }}
         >
-          {coverUrl ? (
+          {/* <img> always rendered so the browser actually loads it */}
+          {coverUrl && !imgError && (
             <img
               src={coverUrl}
               alt={title}
+              referrerPolicy="no-referrer"
               className="w-full h-full object-cover"
+              onLoad={() => setImgLoading(false)}
+              onError={() => { setImgLoading(false); setImgError(true) }}
               loading="lazy"
             />
-          ) : (
-            <div className="flex flex-col items-center gap-2t">
-              <FilmStrip size={32} weight="regular" />
-              <span>视频封面</span>
+          )}
+
+          {/* Loading overlay — shown on top while image fetches */}
+          {imgLoading && coverUrl && !imgError && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-2t" style={{ backgroundColor: 'var(--surface-overlay)' }}>
+              <div
+                className="rounded-full animate-spin"
+                style={{
+                  width: '28px',
+                  height: '28px',
+                  border: '3px solid var(--border-subtle)',
+                  borderTopColor: 'var(--color-accent)',
+                }}
+              />
+              <span style={{ fontSize: 'var(--text-caption)', color: 'var(--text-tertiary)' }}>
+                封面加载中…
+              </span>
+            </div>
+          )}
+
+          {/* Error or no-URL fallback */}
+          {(imgError || !coverUrl) && !imgLoading && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-2t">
+              <ImageSquare size={28} weight="regular" style={{ color: 'var(--text-tertiary)' }} />
+              <span style={{ fontSize: 'var(--text-caption)', color: 'var(--text-tertiary)' }}>
+                {imgError ? '封面加载失败' : '暂无封面'}
+              </span>
             </div>
           )}
         </div>
+        )}
 
         {/* Info area */}
         <div className="flex-1 min-w-0 flex flex-col justify-between">
@@ -170,12 +259,12 @@ export default function VideoCard({
                 color: 'var(--text-tertiary)',
               }}
               onMouseEnter={(e) => {
-                e.currentTarget.style.backgroundColor = 'rgba(0,0,0,0.06)'
+                e.currentTarget.style.backgroundColor = 'var(--surface-overlay)'
                 e.currentTarget.style.color = 'var(--text-primary)'
               }}
               onMouseLeave={(e) => {
                 e.currentTarget.style.backgroundColor = 'transparent'
-                e.currentTarget.style.color = ''
+                e.currentTarget.style.color = 'var(--text-tertiary)'
               }}
             >
               <X size={14} weight="regular" />
@@ -212,59 +301,67 @@ export default function VideoCard({
         ))}
       </div>
 
-      {/* ── Advanced Options (collapsible) ── */}
-      <div className="mt-3t">
-        <button
-          onClick={() => setShowAdvanced(!showAdvanced)}
-          className="flex items-center gap-1t transition-colors duration-fast"
-          style={{
-            fontSize: 'var(--text-body-sm)',
-            color: 'var(--text-secondary)',
-            cursor: 'pointer',
-            background: 'none',
-            border: 'none',
-          }}
+      {/* ── Inline download mode buttons ── */}
+      {downloadModeStyle === 'inline' && (
+        <div
+          className="flex flex-wrap items-center mt-2t"
+          style={{ gap: '8px' }}
         >
           <span
             style={{
-              display: 'inline-block',
-              transition: 'transform 200ms var(--ease-out)',
-              transform: showAdvanced ? 'rotate(90deg)' : 'rotate(0deg)',
-              fontSize: '10px',
+              fontSize: 'var(--text-body-sm)',
+              color: 'var(--text-secondary)',
+              marginRight: '4px',
             }}
           >
-            <CaretRight size={10} weight="regular" />
+            下载方式:
           </span>
-          高级选项
-        </button>
-
-        {showAdvanced && (
-          <div
-            className="mt-2t pt-3t flex flex-wrap items-center gap-4t"
-            style={{ borderTop: '1px solid var(--border-subtle)' }}
+          <InlineModeButton
+            icon="📹"
+            label="仅视频"
+            onClick={() => onAddToQueueWithMode?.(selectedQuality, 'video-only')}
+          />
+          <InlineModeButton
+            icon="🎵"
+            label="仅音频"
+            onClick={() => onAddToQueueWithMode?.(selectedQuality, 'audio-only')}
+          />
+          <InlineModeButton
+            icon="📦"
+            label="分别下载"
+            onClick={() => onAddToQueueWithMode?.(selectedQuality, 'separate')}
+          />
+          <InlineModeButton
+            icon="🔗"
+            label="合并"
+            onClick={() => onAddToQueueWithMode?.(selectedQuality, 'merge')}
+          />
+          <span
+            onClick={onNavigateToSettings}
+            title="前往设置页调整更多下载选项"
+            style={{
+              fontSize: '11px',
+              color: 'var(--color-accent)',
+              cursor: 'pointer',
+              marginLeft: 'auto',
+              opacity: 0.7,
+            }}
           >
-            {/* Format */}
-            <OptionGroup label="格式" options={['mp4', 'flv', 'm4s']} />
-            {/* Codec */}
-            <OptionGroup label="编码" options={['HEVC', 'AVC', 'AV1']} />
-            {/* Extras */}
-            <label
-              className="flex items-center gap-2t cursor-pointer"
-              style={{ fontSize: 'var(--text-body-sm)', color: 'var(--text-secondary)' }}
-            >
-              <input type="checkbox" defaultChecked={false} />
-              下载字幕
-            </label>
-            <label
-              className="flex items-center gap-2t cursor-pointer"
-              style={{ fontSize: 'var(--text-body-sm)', color: 'var(--text-secondary)' }}
-            >
-              <input type="checkbox" defaultChecked={false} />
-              下载弹幕
-            </label>
+            ⚙ 更多设置 →
+          </span>
+          {/* 字幕/弹幕快捷开关 + 独立下载 */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            flexBasis: '100%',
+          }}>
+            <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>附带:</span>
+            <TogglePill label="弹幕" icon="💬" storeKey="danmaku" onDownload={handleDownloadDanmaku} />
+            <TogglePill label="字幕" icon="📝" storeKey="subtitle" onDownload={handleDownloadSubtitle} />
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* ── Action Bar ── */}
       <div
@@ -280,35 +377,37 @@ export default function VideoCard({
           预估: {selectedQuality.size} ({selectedQuality.label})
         </span>
 
-        <button
-          onClick={handleAddToQueue}
-          className="flex items-center justify-center font-medium transition-all duration-fast"
-          style={{
-            height: 'var(--btn-height)',
-            paddingLeft: '24px',
-            paddingRight: '24px',
-            borderRadius: 'var(--btn-radius)',
-            fontSize: 'var(--text-body)',
-            backgroundColor: 'var(--btn-primary-bg)',
-            color: 'var(--btn-primary-text)',
-            border: 'none',
-            cursor: 'pointer',
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.backgroundColor = 'var(--btn-primary-hover)'
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.backgroundColor = 'var(--btn-primary-bg)'
-          }}
-          onMouseDown={(e) => {
-            e.currentTarget.style.transform = 'scale(0.98)'
-          }}
-          onMouseUp={(e) => {
-            e.currentTarget.style.transform = 'scale(1)'
-          }}
-        >
-          加入下载队列
-        </button>
+        {downloadModeStyle === 'popup' && (
+          <button
+            onClick={handleAddToQueue}
+            className="flex items-center justify-center font-medium transition-all duration-fast"
+            style={{
+              height: 'var(--btn-height)',
+              paddingLeft: '24px',
+              paddingRight: '24px',
+              borderRadius: 'var(--btn-radius)',
+              fontSize: 'var(--text-body)',
+              backgroundColor: 'var(--btn-primary-bg)',
+              color: 'var(--btn-primary-text)',
+              border: 'none',
+              cursor: 'pointer',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = 'var(--btn-primary-hover)'
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = 'var(--btn-primary-bg)'
+            }}
+            onMouseDown={(e) => {
+              e.currentTarget.style.transform = 'scale(0.98)'
+            }}
+            onMouseUp={(e) => {
+              e.currentTarget.style.transform = 'scale(1)'
+            }}
+          >
+            加入下载队列
+          </button>
+        )}
       </div>
 
       {/* ── Card enter keyframe (injected once) ── */}
@@ -341,32 +440,112 @@ function MetaDot() {
   )
 }
 
-function OptionGroup({
-  label,
-  options,
-}: {
+function TogglePill({ label, icon, storeKey, onDownload }: {
   label: string
-  options: string[]
+  icon: string
+  storeKey: 'danmaku' | 'subtitle'
+  onDownload?: () => void
 }) {
+  const key = storeKey === 'danmaku' ? 'downloadDanmaku' as const : 'downloadSubtitle' as const
+  const active = useUserPrefsStore((s) => s[key])
+  const setter = storeKey === 'danmaku'
+    ? (v: boolean) => useUserPrefsStore.getState().setDownloadDanmaku(v)
+    : (v: boolean) => useUserPrefsStore.getState().setDownloadSubtitle(v)
+
   return (
-    <div className="flex items-center gap-2t">
-      <span style={{ fontSize: 'var(--text-body-sm)', color: 'var(--text-secondary)' }}>
-        {label}:
-      </span>
-      {options.map((opt) => (
-        <span
-          key={opt}
-          className="px-2t py-1t rounded-sm transition-colors duration-fast cursor-pointer"
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0' }}>
+      <button
+        onClick={() => setter(!active)}
+        title={active ? `已开启随视频下载${label}` : `随视频下载${label}（关）`}
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: '3px',
+          padding: '2px 4px 2px 8px',
+          borderRadius: 'var(--radius-full, 999px) 0 0 var(--radius-full, 999px)',
+          fontSize: '11px',
+          border: active ? '1px solid var(--color-accent)' : '1px solid var(--border-subtle)',
+          borderRight: 'none',
+          background: active ? 'var(--color-accent-muted)' : 'transparent',
+          color: active ? 'var(--color-accent)' : 'var(--text-tertiary)',
+          cursor: 'pointer',
+          transition: 'all 0.15s',
+        }}
+      >
+        <span>{icon}</span>
+        <span>{label}</span>
+      </button>
+      {onDownload && (
+        <button
+          onClick={(e) => { e.stopPropagation(); onDownload() }}
+          title={`单独下载${label}（不下载视频）`}
           style={{
-            fontSize: 'var(--text-body-sm)',
-            color: 'var(--text-secondary)',
-            border: '1px solid var(--border-default)',
-            borderRadius: 'var(--radius-sm)',
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '2px 7px',
+            borderRadius: '0 var(--radius-full, 999px) var(--radius-full, 999px) 0',
+            fontSize: '11px',
+            border: active ? '1px solid var(--color-accent)' : '1px solid var(--border-subtle)',
+            borderLeft: 'none',
+            background: 'transparent',
+            color: active ? 'var(--color-accent)' : 'var(--text-tertiary)',
+            cursor: 'pointer',
+            transition: 'all 0.15s',
           }}
         >
-          {opt}
-        </span>
-      ))}
-    </div>
+          <DownloadSimple size={12} weight="bold" />
+        </button>
+      )}
+    </span>
+  )
+}
+
+function InlineModeButton({
+  icon,
+  label,
+  onClick,
+}: {
+  icon: string
+  label: string
+  onClick: () => void
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className="transition-all duration-fast"
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: '4px',
+        padding: '4px 12px',
+        borderRadius: 'var(--radius-full, 999px)',
+        fontSize: 'var(--text-body-sm)',
+        lineHeight: 'var(--text-body-sm-lh)',
+        border: '1px solid var(--border-subtle)',
+        backgroundColor: 'transparent',
+        color: 'var(--text-secondary)',
+        cursor: 'pointer',
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.borderColor = 'var(--color-accent)'
+        e.currentTarget.style.backgroundColor = 'var(--color-accent-muted)'
+        e.currentTarget.style.color = 'var(--color-accent)'
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.borderColor = 'var(--border-subtle)'
+        e.currentTarget.style.backgroundColor = 'transparent'
+        e.currentTarget.style.color = 'var(--text-secondary)'
+      }}
+      onMouseDown={(e) => {
+        e.currentTarget.style.transform = 'scale(0.96)'
+      }}
+      onMouseUp={(e) => {
+        e.currentTarget.style.transform = 'scale(1)'
+      }}
+    >
+      <span>{icon}</span>
+      <span>{label}</span>
+    </button>
   )
 }

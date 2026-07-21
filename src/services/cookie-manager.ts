@@ -12,6 +12,7 @@
  */
 
 const API_BASE = '/api/bilibili'
+const PASSPORT_BASE = '/api/passport'
 
 const UA_PC =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
@@ -125,12 +126,17 @@ export async function validateLoginStatus(
       return { user: null, isValid: false }
     }
 
+    // B站 API 可能返回 http:// 头像链接，强制 https 避免浏览器混合内容拦截
+    let faceUrl = data.face ?? ''
+    if (faceUrl.startsWith('http://')) {
+      faceUrl = faceUrl.replace('http://', 'https://')
+    }
     return {
       isValid: true,
       user: {
         uid: data.wallet?.mid ?? data.mid ?? 0,
         name: data.uname ?? '',
-        face: data.face ?? '',
+        face: faceUrl,
         level: data.level_info?.current_level ?? 0,
         isVip: data.vip?.status === 1,
       },
@@ -159,7 +165,7 @@ export function getCookieInfo(raw: string): CookieInfo {
  */
 export function getAuthCookieString(): string {
   try {
-    const stored = localStorage.getItem('bilibilidown-cookies')
+    const stored = localStorage.getItem('bibilidown-cookies')
     if (stored) {
       const data = JSON.parse(stored)
       if (data?.raw && data?.isValid) {
@@ -178,7 +184,7 @@ export function getAuthCookieString(): string {
 export function persistCookie(raw: string, isValid: boolean): void {
   try {
     localStorage.setItem(
-      'bilibilidown-cookies',
+      'bibilidown-cookies',
       JSON.stringify({
         raw,
         isValid,
@@ -195,7 +201,7 @@ export function persistCookie(raw: string, isValid: boolean): void {
  */
 export function clearPersistedCookie(): void {
   try {
-    localStorage.removeItem('bilibilidown-cookies')
+    localStorage.removeItem('bibilidown-cookies')
   } catch {
     // ignore
   }
@@ -206,7 +212,7 @@ export function clearPersistedCookie(): void {
  */
 export function getPersistedCookieString(): string {
   try {
-    const stored = localStorage.getItem('bilibilidown-cookies')
+    const stored = localStorage.getItem('bibilidown-cookies')
     if (stored) {
       const data = JSON.parse(stored)
       return data?.raw ?? ''
@@ -274,7 +280,7 @@ export async function refreshCookie(): Promise<{
     const csrf = parsed['bili_jct'] || ''
     if (!csrf) return { success: false, error: '缺少 CSRF token' }
 
-    const url = `${API_BASE}/x/passport-login/web/cookie/refresh`
+    const url = `${PASSPORT_BASE}/x/passport-login/web/cookie/refresh`
     const body = new URLSearchParams({
       csrf,
       refresh_csrf: csrf,

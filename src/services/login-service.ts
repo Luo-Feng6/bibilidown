@@ -29,10 +29,16 @@ import type { BiliUserInfo } from './cookie-manager'
 /* ── 常量 ── */
 
 const API_BASE = '/api/bilibili'
-const PASSPORT_BASE = '/api/bilibili' // 登录 API 也在 api.bilibili.com（passport 子域也用代理）
+const PASSPORT_BASE = '/api/passport' // 登录 / 通行证 API 走 passport.bilibili.com
 
 const UA_PC =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+
+/** 仅在开发模式下输出日志，避免生产环境轮询日志刷屏 */
+const isDev = typeof process !== 'undefined' && process.env?.NODE_ENV === 'development'
+function devLog(...args: any[]) {
+  if (isDev) console.log(...args)
+}
 
 /* ── Types ── */
 
@@ -72,7 +78,7 @@ function getLoginHeaders(): Record<string, string> {
  * @returns { url, qrcodeKey } — url 为 QR 码内容，qrcodeKey 用于轮询状态
  */
 export async function generateQrCode(): Promise<QrCodeResult> {
-  const url = `${API_BASE}/x/passport-login/web/qrcode/generate?source=main-web`
+  const url = `${PASSPORT_BASE}/x/passport-login/web/qrcode/generate?source=main-fe`
   const res = await fetch(url, {
     headers: {
       'User-Agent': UA_PC,
@@ -99,7 +105,7 @@ export async function generateQrCode(): Promise<QrCodeResult> {
 export async function pollQrStatus(
   qrcodeKey: string
 ): Promise<{ status: 'waiting' | 'scanned' | 'expired' | 'success'; cookieStr?: string }> {
-  const url = `${API_BASE}/x/passport-login/web/qrcode/poll?source=main-web&qrcode_key=${qrcodeKey}`
+  const url = `${PASSPORT_BASE}/x/passport-login/web/qrcode/poll?source=main-fe&qrcode_key=${qrcodeKey}`
   const res = await fetch(url, {
     headers: {
       'User-Agent': UA_PC,
@@ -110,22 +116,31 @@ export async function pollQrStatus(
     credentials: 'include',
   })
   const json = await res.json()
-  const code = json.data?.code ?? json.code
+  const dataCode = (json as any).data?.code
+  const topCode = (json as any).code
+  const code: number = dataCode ?? topCode
+
+  // Debug: log poll response so we can diagnose login issues (dev only)
+  devLog(`[QR poll] top.code=${topCode} data.code=${dataCode} resolved=${code}`)
 
   switch (code) {
     case 0: {
       // 扫码成功！提取 Set-Cookie
-      // 浏览器已自动存储了 cookie，我们需要从 document.cookie 或请求响应中提取
-      // 由于 Vite 代理，cookie 被设置在 localhost 域下
       const cookieStr = extractBiliCookies()
+      devLog(`[QR poll] SUCCESS — cookie extracted: ${cookieStr ? 'YES' : 'NO'} (len=${cookieStr?.length ?? 0})`)
       return { status: 'success', cookieStr }
     }
     case 86038:
+      devLog('[QR poll] EXPIRED')
       return { status: 'expired' }
     case 86090:
+      devLog('[QR poll] SCANNED')
       return { status: 'scanned' }
     case 86101:
+      devLog('[QR poll] WAITING (86101)')
+      return { status: 'waiting' }
     default:
+      devLog(`[QR poll] UNKNOWN code=${code} — treating as waiting`)
       return { status: 'waiting' }
   }
 }

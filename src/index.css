@@ -1,5 +1,5 @@
 /* ═══════════════════════════════════════════════════════
-   BilibiliDown — Global Stylesheet Entry Point
+   BibiliDown — Global Stylesheet Entry Point
    ═══════════════════════════════════════════════════════ */
 
 /* Layer 1: Design Tokens (must load first) */
@@ -26,6 +26,10 @@
     overflow: hidden;
   }
 
+  html {
+    background-color: var(--surface-root);
+  }
+
   body {
     font-family: var(--font-body);
     font-size: var(--text-body);
@@ -34,11 +38,10 @@
     background-color: var(--surface-root);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-    /* Disable text selection drag (desktop app behavior) */
-    user-select: none;
   }
 
-  /* Allow text selection in input fields */
+  /* Allow text selection everywhere (browser behavior).
+     Only the Electron title bar drag region disables it — see TitleBar.tsx. */
   input, textarea {
     user-select: text;
   }
@@ -137,7 +140,7 @@
 
 /* Subtle blue glow at top of page for light mode — adds polish */
 body {
-  background-image: radial-gradient(ellipse at 50% 0%, rgba(59, 130, 246, 0.03) 0%, transparent 60%);
+  background-image: radial-gradient(ellipse at 50% 0%, rgba(var(--color-accent-rgb, 59, 130, 246), 0.03) 0%, transparent 60%);
   background-attachment: fixed;
 }
 

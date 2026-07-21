@@ -7,7 +7,7 @@ import type { StoreApi, UseBoundStore } from 'zustand'
 
 interface DownloadStore {
   items: DownloadItemData[]
-  addItem: (item: DownloadItemData) => void
+  addItem: (item: DownloadItemData) => { duplicate: boolean; id: string }
   addItems: (items: DownloadItemData[]) => void
   removeItem: (id: string) => void
   updateItem: (id: string, patch: Partial<DownloadItemData>) => void
@@ -175,13 +175,13 @@ describe('downloadStore', () => {
       expect(store.getState().items[0].status).toBe('paused')
     })
 
-    it('resumeItem transitions paused → downloading, resets speed', () => {
+    it('resumeItem transitions paused → queued, resets speed', () => {
       const store = useDownloadStore
       store.getState().addItem(makeItem({ id: 'a', status: 'paused', speed: '12.3 MB/s' }))
       store.getState().resumeItem('a')
       const item = store.getState().items[0]
-      expect(item.status).toBe('downloading')
-      expect(item.speed).toBe('恢复中...')
+      expect(item.status).toBe('queued')
+      expect(item.speed).toBe('等待中')
     })
 
     it('retryItem transitions failed → queued, resets progress', () => {

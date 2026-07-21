@@ -8,12 +8,12 @@ import {
   sendSmsCode,
   loginWithSms,
   logout as doLogout,
-  checkLoginState,
   getCaptchaData,
   type LoginTab,
 } from '../services/login-service'
 import { setGlobalCookie } from '../services/bilibili-api'
 import { useUserPrefsStore } from '../stores/userPrefsStore'
+import { useShallow } from 'zustand/shallow'
 
 interface LoginPanelProps {
   open: boolean
@@ -34,8 +34,16 @@ type QrStatus = 'loading' | 'ready' | 'scanned' | 'expired' | 'success'
 export default function LoginPanel({ open, onClose }: LoginPanelProps) {
   const [activeTab, setActiveTab] = useState<LoginTab>('qr')
 
-  // User prefs
-  const { loginName, loginFace, cookieStr, setLoginInfo, clearLoginInfo } = useUserPrefsStore()
+  // User prefs — useShallow so unrelated store changes don't re-render us
+  const { loginName, loginFace, cookieStr, setLoginInfo, clearLoginInfo } = useUserPrefsStore(
+    useShallow((s) => ({
+      loginName: s.loginName,
+      loginFace: s.loginFace,
+      cookieStr: s.cookieStr,
+      setLoginInfo: s.setLoginInfo,
+      clearLoginInfo: s.clearLoginInfo,
+    }))
+  )
 
   const isLoggedIn = !!loginName
 
@@ -88,7 +96,7 @@ export default function LoginPanel({ open, onClose }: LoginPanelProps) {
               borderRadius: 'var(--radius-sm)',
             }}
             onMouseEnter={(e) => {
-              e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.06)'
+              e.currentTarget.style.backgroundColor = 'var(--surface-overlay)'
               e.currentTarget.style.color = 'var(--text-primary)'
             }}
             onMouseLeave={(e) => {
@@ -208,12 +216,16 @@ function LoggedInView({
           <img
             src={face}
             alt={name}
+            referrerPolicy="no-referrer"
+            crossOrigin="anonymous"
             style={{
               width: '48px',
               height: '48px',
               borderRadius: '50%',
               border: '2px solid var(--color-accent)',
+              objectFit: 'cover',
             }}
+            onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
           />
         ) : (
           <div
@@ -268,10 +280,12 @@ function QrLoginTab() {
   const [status, setStatus] = useState<QrStatus>('loading')
   const [qrDataUrl, setQrDataUrl] = useState('')
   const [error, setError] = useState('')
+  const [qrVersion, setQrVersion] = useState(0)
   const qrcodeKeyRef = useRef('')
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  const { setLoginInfo } = useUserPrefsStore()
+  const setLoginInfoForStore = useUserPrefsStore((s) => s.setLoginInfo)
+  const theme = useUserPrefsStore((s) => s.theme)
 
   useEffect(() => {
     let cancelled = false
@@ -285,11 +299,12 @@ function QrLoginTab() {
 
         qrcodeKeyRef.current = qrcodeKey
 
-        // Generate QR code data URL
+        // QR dark color: black in light mode, white in dark mode
+        const qrDark = theme === 'light' ? '#1e293b' : '#ffffff'
         const dataUrl = await QRCode.toDataURL(url, {
           width: 200,
           margin: 2,
-          color: { dark: '#ffffff', light: '#00000000' },
+          color: { dark: qrDark, light: '#00000000' },
         })
         if (cancelled) return
 
@@ -311,10 +326,34 @@ function QrLoginTab() {
                 if (pollTimerRef.current) clearInterval(pollTimerRef.current)
                 if (result.cookieStr) {
                   setGlobalCookie(result.cookieStr)
-                  // Check login status for user info
-                  const { user } = await checkLoginState()
-                  if (user) {
-                    setLoginInfo(result.cookieStr, user.name, user.face)
+                  // 直接用提取到的 cookieStr 验证，不依赖 localStorage
+                  const { validateLoginStatus, persistCookie } = await import('../services/cookie-manager')
+                  const { user, isValid } = await validateLoginStatus(result.cookieStr)
+                  if (isValid && user) {
+                    persistCookie(result.cookieStr, true)
+                    setLoginInfoForStore(result.cookieStr, user.name, user.face)
+                  } else if (result.cookieStr.includes('SESSDATA')) {
+                    // cookie 提取成功但验证失败（可能是网络问题），依然保存
+                    const { persistCookie } = await import('../services/cookie-manager')
+                    persistCookie(result.cookieStr, true)
+                    setLoginInfoForStore(result.cookieStr, '', '')
+                  }
+                } else {
+                  // cookieStr 为空 — 可能 HttpOnly 未剥离，尝试从 document.cookie 重新提取
+                  console.warn('[QR login] cookieStr is empty — trying document.cookie fallback')
+                  const fallback = document.cookie
+                  if (fallback) {
+                    const { validateLoginStatus, persistCookie } = await import('../services/cookie-manager')
+                    const { user, isValid } = await validateLoginStatus(fallback)
+                    if (isValid) {
+                      persistCookie(fallback, true)
+                      setGlobalCookie(fallback)
+                      setLoginInfoForStore(fallback, user?.name ?? '', user?.face ?? '')
+                    } else {
+                      console.error('[QR login] fallback cookie validation failed')
+                    }
+                  } else {
+                    console.error('[QR login] document.cookie is also empty — login may have failed silently')
                   }
                 }
                 break
@@ -322,9 +361,12 @@ function QrLoginTab() {
                 setStatus('expired')
                 if (pollTimerRef.current) clearInterval(pollTimerRef.current)
                 break
+              default:
+                // Still waiting — no UI change needed
+                break
             }
-          } catch {
-            // Poll error, keep trying
+          } catch (err) {
+            console.error('QR poll error:', err)
           }
         }, 2000)
       } catch (err: any) {
@@ -344,16 +386,14 @@ function QrLoginTab() {
         pollTimerRef.current = null
       }
     }
-  }, [])
+  }, [setLoginInfoForStore, qrVersion, theme])
 
   const handleRefresh = () => {
     if (pollTimerRef.current) clearInterval(pollTimerRef.current)
     setQrDataUrl('')
     setError('')
-    // Re-trigger effect by re-mounting key (simulated by re-init)
     qrcodeKeyRef.current = ''
-    // Simple approach: reload the component
-    window.location.reload()
+    setQrVersion((v) => v + 1)
   }
 
   return (
@@ -482,6 +522,13 @@ function QrLoginTab() {
         style={{ fontSize: 'var(--text-caption)', color: 'var(--text-tertiary)' }}
       >
         二维码有效期为 3 分钟
+      </p>
+
+      <p
+        className="mt-3t text-center"
+        style={{ fontSize: 'var(--text-caption)', color: 'var(--text-tertiary)', padding: '0 1rem' }}
+      >
+        扫码后 Cookie 将保存在本地浏览器中，刷新页面可保持登录状态
       </p>
     </div>
   )
@@ -682,6 +729,7 @@ function PasswordLoginTab({
   return (
     <div className="flex flex-col gap-4t pt-2t">
       <InputField
+        id="password-username"
         label="手机号 / 邮箱"
         type="text"
         placeholder="请输入手机号或邮箱"
@@ -692,6 +740,7 @@ function PasswordLoginTab({
         }}
       />
       <InputField
+        id="password-password"
         label="密码"
         type="password"
         placeholder="请输入密码"
@@ -709,8 +758,8 @@ function PasswordLoginTab({
         <div
           className="flex items-center gap-2t px-3t py-2t rounded-lg"
           style={{
-            backgroundColor: 'rgba(239, 68, 68, 0.1)',
-            border: '1px solid rgba(239, 68, 68, 0.3)',
+            backgroundColor: 'var(--color-error-bg)',
+            border: '1px solid var(--color-error)',
           }}
         >
           <Warning size={16} weight="fill" style={{ color: 'var(--color-error)' }} />
@@ -914,6 +963,7 @@ function SmsLoginTab({
   return (
     <div className="flex flex-col gap-4t pt-2t">
       <InputField
+        id="sms-phone"
         label="手机号"
         type="text"
         placeholder="请输入手机号"
@@ -930,6 +980,7 @@ function SmsLoginTab({
         </label>
         <div className="flex gap-3t">
           <input
+            id="sms-code-input"
             type="text"
             placeholder="请输入验证码"
             value={code}
@@ -982,8 +1033,8 @@ function SmsLoginTab({
         <div
           className="flex items-center gap-2t px-3t py-2t rounded-lg"
           style={{
-            backgroundColor: 'rgba(239, 68, 68, 0.1)',
-            border: '1px solid rgba(239, 68, 68, 0.3)',
+            backgroundColor: 'var(--color-error-bg)',
+            border: '1px solid var(--color-error)',
           }}
         >
           <Warning size={16} weight="fill" style={{ color: 'var(--color-error)' }} />
@@ -1029,6 +1080,7 @@ function InputField({
   value,
   onChange,
   onKeyDown,
+  id,
 }: {
   label: string
   type: string
@@ -1036,6 +1088,7 @@ function InputField({
   value: string
   onChange: (e: React.ChangeEvent<HTMLInputElement>) => void
   onKeyDown?: (e: React.KeyboardEvent<HTMLInputElement>) => void
+  id?: string
 }) {
   return (
     <div>
@@ -1046,6 +1099,7 @@ function InputField({
         {label}
       </label>
       <input
+        id={id}
         type={type}
         placeholder={placeholder}
         value={value}

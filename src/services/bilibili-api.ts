@@ -1,5 +1,5 @@
 /**
- * BilibiliDown — B 站 API 服务层
+ * BibiliDown — B 站 API 服务层
  *
  * 基于原始 Java 版 BilibiliDown 的 API 调用逻辑重写。
  * 原始代码参考: src/nicelee/bilibili/parsers/impl/AbstractBaseParser.java
@@ -18,6 +18,7 @@ import type { ParsedVideo } from '../stores/parseStore'
 import type { QualityOption } from '../components/QualityChip'
 import { getPersistedCookieString, refreshCookie } from './cookie-manager'
 import { encWbi } from './wbi-sign'
+import { useUserPrefsStore } from '../stores/userPrefsStore'
 
 /* ── 常量 ── */
 
@@ -153,7 +154,6 @@ const DEFAULT_QUALITY_OPTIONS: QualityOption[] = [
   { label: '720P', size: '', available: true },
   { label: '480P', size: '', available: true },
   { label: '360P', size: '', available: true },
-  { label: '仅音频', size: '', available: true },
 ]
 
 /* ── 工具函数 ── */
@@ -165,11 +165,16 @@ function headersForApi(refererAvId: string): Record<string, string> {
     'Accept-Language': 'zh-CN,zh;q=0.9',
     'User-Agent': UA_PC,
     Referer: `https://www.bilibili.com/video/${refererAvId}`,
-    Origin: 'https://www.bilibili.com',
   }
-  // 注入登录 Cookie（解锁高清画质）
-  if (globalCookie) {
-    h['Cookie'] = globalCookie
+  // Origin 是浏览器禁用头（fetch 不允许手动设置），仅在 Electron 主进程环境生效
+  // Cookie 同理：浏览器模式下 Vite proxy 自动转发 localhost cookies，无需手动设
+  if (typeof window !== 'undefined' && !window.electronAPI) {
+    // 浏览器模式：不设 Cookie/Origin，交给 Vite proxy 自动处理
+  } else {
+    h['Origin'] = 'https://www.bilibili.com'
+    if (globalCookie) {
+      h['Cookie'] = globalCookie
+    }
   }
   return h
 }
@@ -181,18 +186,21 @@ function headersForPgc(): Record<string, string> {
     'Accept-Language': 'zh-CN,zh;q=0.9',
     'User-Agent': UA_PC,
     Referer: 'https://www.bilibili.com',
-    Origin: 'https://www.bilibili.com',
   }
-  // 注入登录 Cookie
-  if (globalCookie) {
-    h['Cookie'] = globalCookie
+  if (typeof window !== 'undefined' && !window.electronAPI) {
+    // 浏览器模式：不设 Cookie/Origin，交给 Vite proxy
+  } else {
+    h['Origin'] = 'https://www.bilibili.com'
+    if (globalCookie) {
+      h['Cookie'] = globalCookie
+    }
   }
   return h
 }
 
 async function apiGet(path: string, headers: Record<string, string>): Promise<any> {
   const url = `${API_BASE}${path}`
-  const res = await fetch(url, { headers })
+  const res = await fetch(url, { headers, credentials: 'include' })
   if (!res.ok) {
     throw new Error(`HTTP ${res.status}: ${res.statusText}`)
   }
@@ -346,7 +354,11 @@ async function fetchAvailableQNs(bvid: string, cid: string, aid?: number): Promi
   return [120, 116, 112, 80, 74, 64, 32, 16]
 }
 
-function buildQualityOptions(availableQNs: number[], durationSec: number): QualityOption[] {
+function buildQualityOptions(
+  availableQNs: number[],
+  durationSec: number,
+  preferredQuality?: string
+): QualityOption[] {
   // 构建可用的清晰度芯片
   const availableSet = new Set(availableQNs)
 
@@ -366,14 +378,15 @@ function buildQualityOptions(availableQNs: number[], durationSec: number): Quali
     })
   }
 
-  // 仅音频选项
-  options.push({
-    label: '仅音频',
-    size: estimateSize(durationSec, 0.3 as any),
-    available: true,
-  })
+  // 默认选中：优先使用用户偏好清晰度
+  if (preferredQuality) {
+    const userPreferred = options.find((o) => o.label === preferredQuality && o.available)
+    if (userPreferred) {
+      userPreferred.selected = true
+      return options
+    }
+  }
 
-  // 默认选中 1080P60 或第一个可用的
   const preferred = options.find((o) => o.label === '1080P60' && o.available)
     ?? options.find((o) => o.available)
   if (preferred) {
@@ -414,6 +427,11 @@ async function parseBvVideo(bvid: string): Promise<ParsedVideo[]> {
     // 使用简单 view API（无需 WBI 签名）
     const viewUrl = `/x/web-interface/view?bvid=${bvid}`
     detail = await apiGet(viewUrl, headersForApi(bvid))
+    // 防御：如果 apiGet 返回 null/undefined（B站 API 返回 code:0 但 data 为空），
+    // 主动 throw 以触发 WBI fallback
+    if (!detail || typeof detail !== 'object') {
+      throw new Error('API 返回空数据，尝试 WBI 签名')
+    }
   } catch {
     // fallback: 使用 WBI 签名的 wbi/view API（可获取更完整信息）
     try {
@@ -430,6 +448,7 @@ async function parseBvVideo(bvid: string): Promise<ParsedVideo[]> {
   const authorName: string = detail.owner?.name ?? ''
   const authorId: string = String(detail.owner?.mid ?? '')
   const coverUrl: string = detail.pic ?? ''
+  console.log('[parse] title:', videoTitle, '| cover:', coverUrl?.slice(0, 60), '| author:', authorName)
   const stat = detail.stat ?? {}
   const pubdate: number = detail.pubdate ?? detail.ctime ?? 0
   const aid: number = detail.aid ?? 0
@@ -447,7 +466,7 @@ async function parseBvVideo(bvid: string): Promise<ParsedVideo[]> {
       () => [120, 116, 112, 80, 74, 64, 32, 16]
     )
 
-    const qualities = buildQualityOptions(availableQNs, pageDuration)
+    const qualities = buildQualityOptions(availableQNs, pageDuration, useUserPrefsStore.getState().preferredQuality)
 
     const isMultiPage = pages.length > 1
     const title = isMultiPage
@@ -573,7 +592,7 @@ async function parseSeason(ssId: string): Promise<ParsedVideo[]> {
     const availableQNs = useDefaultQNs
       ? defaultQNList
       : await fetchAvailableQNs(bvid, String(cid)).catch(() => defaultQNList)
-    const qualities = buildQualityOptions(availableQNs, durationSec)
+    const qualities = buildQualityOptions(availableQNs, durationSec, useUserPrefsStore.getState().preferredQuality)
 
     const epTitle = ep.long_title || ep.title || `第${i + 1}集`
 
@@ -656,7 +675,7 @@ function mediasToVideos(
     const playCount = m.cnt_info?.play ?? 0
     const durationSec: number = m.duration ?? 0
     const pageCount: number = m.page ?? 1
-    const qualities = buildQualityOptions(defaultQNList, durationSec)
+    const qualities = buildQualityOptions(defaultQNList, durationSec, useUserPrefsStore.getState().preferredQuality)
 
     results.push({
       id: `ml${mlId}_${m.id}`,
@@ -901,8 +920,12 @@ export interface DownloadUrlResult {
   quality: number
   /** 视频流 URL（DASH）或 FLV URL */
   videoUrl: string
+  /** 视频流备用 URL */
+  videoBackups: string[]
   /** 音频流 URL（仅 DASH 格式，FLV 为 ''） */
   audioUrl: string
+  /** 音频流备用 URL */
+  audioBackups: string[]
   /** 实际格式 */
   format: DownloadFormat
 }
@@ -996,7 +1019,9 @@ export async function resolveDownloadUrl(
     return {
       quality: realQn,
       videoUrl: finalVideoUrl,
+      videoBackups: bestVideo?.backup_url ?? bestVideo?.backupUrl ?? [],
       audioUrl: finalAudioUrl,
+      audioBackups: bestAudio?.backup_url ?? bestAudio?.backupUrl ?? [],
       format: 'dash',
     }
   }
@@ -1006,10 +1031,136 @@ export async function resolveDownloadUrl(
     return {
       quality: realQn,
       videoUrl: data.durl[0].url,
+      videoBackups: data.durl[0].backup_url ?? [],
       audioUrl: '',
+      audioBackups: [],
       format: 'flv',
     }
   }
 
   throw new Error('无法解析下载链接，清晰度可能不可用')
+}
+
+/* ── 弹幕下载 ── */
+
+/**
+ * 下载 B 站弹幕（XML 格式）。
+ *
+ * API: GET https://api.bilibili.com/x/v1/dm/list.so?oid={cid}
+ * 返回 XML 格式的弹幕数据。
+ *
+ * @param cid 视频分 P 的 cid
+ * @returns 弹幕 XML 字符串，失败时返回空字符串
+ */
+export async function fetchDanmaku(cid: number): Promise<string> {
+  try {
+    const url = `${API_BASE}/x/v1/dm/list.so?oid=${cid}`
+    const res = await fetch(url, {
+      headers: {
+        Accept: 'application/xml, text/xml, */*',
+        'Accept-Language': 'zh-CN,zh;q=0.9',
+        'User-Agent': UA_PC,
+        Referer: 'https://www.bilibili.com',
+        Origin: 'https://www.bilibili.com',
+      },
+      credentials: 'include',
+    })
+    if (!res.ok) {
+      console.warn(`[fetchDanmaku] HTTP ${res.status} for cid=${cid}`)
+      return ''
+    }
+    return await res.text()
+  } catch (err) {
+    console.warn(`[fetchDanmaku] 弹幕下载失败 (cid=${cid}):`, err)
+    return ''
+  }
+}
+
+/* ── 字幕下载 ── */
+
+/**
+ * 将秒数转换为 SRT 时间戳格式 (HH:MM:SS,mmm)。
+ */
+function secondsToSrtTime(seconds: number): string {
+  const h = Math.floor(seconds / 3600)
+  const m = Math.floor((seconds % 3600) / 60)
+  const s = Math.floor(seconds % 60)
+  const ms = Math.round((seconds % 1) * 1000)
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')},${String(ms).padStart(3, '0')}`
+}
+
+/**
+ * 下载 B 站视频字幕并转换为 SRT 格式。
+ *
+ * 流程：
+ *   1. GET /x/player/v2?bvid=&cid= → 获取字幕信息 (data.subtitle.subtitles)
+ *   2. 选取第一个字幕的 subtitle_url（通常为中文字幕）
+ *   3. 若 subtitle_url 以 // 开头则补全 https:
+ *   4. 拉取字幕 JSON → 获取 body 数组
+ *   5. 将每条字幕（from/to/content）转换为 SRT 格式
+ *
+ * @param bvid BV 号
+ * @param cid  分 P 的 cid
+ * @returns SRT 格式字幕字符串，无字幕或失败时返回空字符串
+ */
+export async function fetchSubtitle(bvid: string, cid: number): Promise<string> {
+  try {
+    // Step 1: 获取字幕信息
+    const playerData = await apiGet(
+      `/x/player/v2?bvid=${bvid}&cid=${cid}`,
+      headersForApi(bvid)
+    )
+
+    const subtitles: any[] | undefined = playerData?.subtitle?.subtitles
+    if (!Array.isArray(subtitles) || subtitles.length === 0) {
+      return ''
+    }
+
+    // Step 2: 选取第一个字幕（通常是中文）
+    const sub = subtitles[0]
+    let subtitleUrl: string = sub?.subtitle_url ?? ''
+    if (!subtitleUrl) return ''
+
+    // Step 3: 补全协议前缀
+    if (subtitleUrl.startsWith('//')) {
+      subtitleUrl = 'https:' + subtitleUrl
+    }
+
+    // Step 4: 拉取字幕内容 JSON
+    const subtitleRes = await fetch(subtitleUrl, {
+      headers: {
+        Accept: 'application/json, */*',
+        'User-Agent': UA_PC,
+        Referer: 'https://www.bilibili.com',
+      },
+    })
+    if (!subtitleRes.ok) {
+      console.warn(`[fetchSubtitle] HTTP ${subtitleRes.status} fetching subtitle content`)
+      return ''
+    }
+
+    const subtitleData = await subtitleRes.json()
+    const body: any[] | undefined = subtitleData?.body
+    if (!Array.isArray(body) || body.length === 0) {
+      return ''
+    }
+
+    // Step 5: 转换为 SRT 格式
+    let srt = ''
+    for (let i = 0; i < body.length; i++) {
+      const event = body[i]
+      const from: number = event.from ?? 0
+      const to: number = event.to ?? 0
+      const content: string = event.content ?? ''
+
+      srt += `${i + 1}\n`
+      srt += `${secondsToSrtTime(from)} --> ${secondsToSrtTime(to)}\n`
+      srt += `${content}\n\n`
+    }
+
+    return srt.trim()
+  } catch (err) {
+    console.warn(`[fetchSubtitle] 字幕下载失败 (bvid=${bvid}, cid=${cid}):`, err)
+    return ''
+  }
 }

@@ -237,7 +237,7 @@ export default function EpisodeList({
                 onClick={() => toggleEpisode(ep.id)}
                 className="flex items-center px-3t py-2t w-full text-left transition-colors duration-fast"
                 style={{
-                  backgroundColor: isSelected ? 'rgba(59, 130, 246, 0.06)' : 'transparent',
+                  backgroundColor: isSelected ? 'var(--color-accent-muted)' : 'transparent',
                   borderBottom: '1px solid var(--border-subtle)',
                   cursor: 'pointer',
                   border: 'none',
@@ -262,7 +262,7 @@ export default function EpisodeList({
                   {isSelected ? (
                     <CheckSquare size={15} weight="fill" style={{ color: 'var(--color-accent)' }} />
                   ) : (
-                    <Square size={15} weight="regular" style={{ color: 'var(--text-quaternary)', opacity: 0.5 }} />
+                    <Square size={15} weight="regular" style={{ color: 'var(--text-disabled)', opacity: 0.5 }} />
                   )}
                   <span
                     style={{
