@@ -205,6 +205,10 @@ function recordToHistory(item: DownloadItemData, status: 'completed' | 'failed',
 /**
  * 用 fetch + ReadableStream 下载文件，并通过回调报告进度。
  * 返回 Blob。
+ *
+ * 浏览器模式下走 Vite 代理（/api/proxy-download?url=...），
+ * 绕过 CDN 防盗链（Referer/Origin 检查），同时保留进度追踪。
+ * Electron 模式下直接 fetch（可设任意请求头）。
  */
 async function downloadWithProgress(
   url: string,
@@ -212,15 +216,25 @@ async function downloadWithProgress(
   onProgress: (loaded: number, total: number) => void,
   signal: AbortSignal
 ): Promise<Blob> {
-  const res = await fetch(url, {
-    headers: {
-      Referer: referer,
-      Origin: 'https://www.bilibili.com',
-      'User-Agent':
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-    },
-    signal,
-  })
+  // 浏览器模式：走本地代理，让服务端设 Referer/Origin 绕过 CDN 防盗链
+  const fetchUrl = !isElectron()
+    ? `/api/proxy-download?url=${encodeURIComponent(url)}`
+    : url
+
+  const headers: Record<string, string> = isElectron()
+    ? {
+        Referer: referer,
+        Origin: 'https://www.bilibili.com',
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      }
+    : {
+        // 浏览器模式：请求走同源 localhost，无需额外头
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      }
+
+  const res = await fetch(fetchUrl, { headers, signal })
 
   if (!res.ok) {
     throw new Error(`HTTP ${res.status}: ${res.statusText}`)

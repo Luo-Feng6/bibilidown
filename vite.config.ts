@@ -3,8 +3,66 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import path from 'path'
 
+/** 下载代理插件：浏览器模式 fetch CDN 时绕过防盗链（Referer/Origin 检查） */
+function downloadProxyPlugin() {
+  return {
+    name: 'download-proxy',
+    configureServer(server: any) {
+      server.middlewares.use('/api/proxy-download', async (req: any, res: any) => {
+        try {
+          const urlObj = new URL(req.url, 'http://localhost')
+          const targetUrl = urlObj.searchParams.get('url')
+          if (!targetUrl) {
+            res.writeHead(400)
+            res.end('Missing url parameter')
+            return
+          }
+
+          const response = await fetch(targetUrl, {
+            headers: {
+              'Referer': 'https://www.bilibili.com',
+              'Origin': 'https://www.bilibili.com',
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            },
+          })
+
+          if (!response.ok) {
+            res.writeHead(response.status, response.statusText)
+            res.end()
+            return
+          }
+
+          const contentLength = response.headers.get('content-length')
+          if (contentLength) res.setHeader('Content-Length', contentLength)
+          const contentType = response.headers.get('content-type')
+          if (contentType) res.setHeader('Content-Type', contentType)
+
+          // Stream the response body
+          const reader = response.body?.getReader()
+          if (!reader) {
+            const buf = await response.arrayBuffer()
+            res.end(Buffer.from(buf))
+            return
+          }
+
+          while (true) {
+            const { done, value } = await reader.read()
+            if (done) { res.end(); break }
+            res.write(value)
+          }
+        } catch (err: any) {
+          if (!res.headersSent) {
+            res.writeHead(502)
+            res.end(err.message || 'Proxy error')
+          }
+        }
+      })
+    },
+  }
+}
+
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), downloadProxyPlugin()],
   base: './',
   resolve: {
     alias: {
