@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { GearSix, Power, ArrowCounterClockwise, CaretDown } from '@phosphor-icons/react'
 import { useUserPrefsStore } from '../stores/userPrefsStore'
+import { usePresetStore } from '../stores/presetStore'
 import { useShallow } from 'zustand/shallow'
 import { showConfirm } from '../services/dialog-service'
 
@@ -257,6 +258,9 @@ export default function SettingsPage() {
         </h1>
       </div>
 
+      {/* ── 下载方案（Preset） ── */}
+      <PresetSection />
+
       {/* ── 外观 ── */}
       <Section title="外观">
         <SettingRow label="主题模式" hint="暗色更适合夜间使用">
@@ -373,8 +377,8 @@ export default function SettingsPage() {
 
         <SettingRow
           label="下载模式"
-          hint="弹窗 / 内联"
-          info="弹窗：点击「加入下载队列」后弹出选择对话框，可取消（点 ✕ 或遮罩），适合想每次确认下载方式的用户。\n\n内联：清晰度下方直接显示四个下载按钮，点击即立即加入队列开始下载（不弹窗确认），适合快速操作。\n\n输出格式由下方「视频/音频输出格式」设置控制。"
+          hint="弹窗模式每次确认 · 内联模式点击按钮即直接下载"
+          info="弹窗：点击「加入下载队列」后弹出选择对话框，可取消（点 ✕ 或遮罩），适合想每次确认下载方式的用户。\n\n内联：清晰度下方显示四个下载按钮（📹仅视频 🎵仅音频 📦分别下载 🔗合并），点击即立即加入队列开始下载，不弹窗确认，适合快速操作。\n\n输出格式由下方「视频/音频输出格式」设置控制。"
         >
           <SettingsSelect
             value={prefs.downloadModeStyle}
@@ -527,6 +531,231 @@ export default function SettingsPage() {
 
 /* ── Sub-components ── */
 
+/** 下载方案 Section — 顶部独立组件，管理 preset CRUD */
+function PresetSection() {
+  const presets = usePresetStore((s) => s.presets)
+  const activePresetId = usePresetStore((s) => s.activePresetId)
+  const saveCurrentAsPreset = usePresetStore((s) => s.saveCurrentAsPreset)
+  const deletePreset = usePresetStore((s) => s.deletePreset)
+  const applyPreset = usePresetStore((s) => s.applyPreset)
+  const renamePreset = usePresetStore((s) => s.renamePreset)
+  const [saveName, setSaveName] = useState('')
+  const [showSaveInput, setShowSaveInput] = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editName, setEditName] = useState('')
+
+  const activePreset = presets.find((p) => p.id === activePresetId)
+
+  // preset 下拉选项：默认 + 所有已保存方案
+  const presetOptions = [
+    { value: '__default__', label: '默认（无方案）' },
+    ...presets.map((p) => ({ value: p.id, label: p.name })),
+  ]
+
+  const currentValue = activePresetId ?? '__default__'
+
+  const handleSelect = (value: string) => {
+    if (value === '__default__') {
+      applyPreset(null)
+    } else {
+      applyPreset(value)
+    }
+  }
+
+  const handleSave = () => {
+    const name = saveName.trim()
+    if (!name) return
+    if (presets.some((p) => p.name === name)) {
+      // 名字冲突
+      return
+    }
+    saveCurrentAsPreset(name)
+    setSaveName('')
+    setShowSaveInput(false)
+  }
+
+  const handleRenameStart = (id: string) => {
+    const p = presets.find((pr) => pr.id === id)
+    if (p) {
+      setEditingId(id)
+      setEditName(p.name)
+    }
+  }
+
+  const handleRenameConfirm = () => {
+    const name = editName.trim()
+    if (name && editingId && !presets.some((p) => p.name === name && p.id !== editingId)) {
+      renamePreset(editingId, name)
+    }
+    setEditingId(null)
+    setEditName('')
+  }
+
+  const handleDelete = async (id: string) => {
+    const p = presets.find((pr) => pr.id === id)
+    const confirmed = await showConfirm({
+      title: '删除方案',
+      message: `确定删除方案「${p?.name ?? ''}」？此操作不可撤销。`,
+      confirmText: '删除',
+      variant: 'warning',
+    })
+    if (confirmed) {
+      deletePreset(id)
+    }
+  }
+
+  return (
+    <Section title="下载方案">
+      <SettingRow
+        label="当前方案"
+        hint={activePreset ? `${presets.length} 个方案已保存` : '保存当前设置为一键切换方案'}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <SettingsSelect
+            value={currentValue}
+            onChange={handleSelect}
+            options={presetOptions}
+            style={{ minWidth: '130px' }}
+          />
+          {activePreset && (
+            <>
+              <HoverButton onClick={() => handleRenameStart(activePreset.id)} title="重命名方案">
+                ✏
+              </HoverButton>
+              <HoverButton onClick={() => handleDelete(activePreset.id)} title="删除方案">
+                🗑
+              </HoverButton>
+            </>
+          )}
+        </div>
+      </SettingRow>
+
+      <SettingRow
+        label={showSaveInput ? '方案名称' : '保存方案'}
+        hint={showSaveInput ? '输入名称后回车确认' : '将当前下载设置保存为新方案'}
+      >
+        {showSaveInput ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <input
+              autoFocus
+              value={saveName}
+              onChange={(e) => setSaveName(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') handleSave(); if (e.key === 'Escape') { setShowSaveInput(false); setSaveName('') } }}
+              placeholder="例如：AI知识库"
+              style={{
+                width: '130px', height: '28px', padding: '0 8px',
+                borderRadius: 'var(--radius-md)', border: '1px solid var(--color-accent)',
+                backgroundColor: 'var(--surface-default)', color: 'var(--text-primary)',
+                fontSize: 'var(--text-body-sm)', outline: 'none',
+              }}
+            />
+            <button
+              onClick={handleSave}
+              disabled={!saveName.trim()}
+              style={{
+                height: '28px', padding: '0 10px', borderRadius: 'var(--radius-md)',
+                border: 'none', backgroundColor: saveName.trim() ? 'var(--color-accent)' : 'var(--border-default)',
+                color: saveName.trim() ? 'var(--color-accent-text)' : 'var(--text-tertiary)',
+                fontSize: 'var(--text-body-sm)', cursor: saveName.trim() ? 'pointer' : 'default',
+                fontWeight: 500,
+              }}
+            >
+              确认
+            </button>
+            <button
+              onClick={() => { setShowSaveInput(false); setSaveName('') }}
+              style={{
+                height: '28px', padding: '0 8px', borderRadius: 'var(--radius-md)',
+                border: '1px solid var(--border-default)', backgroundColor: 'transparent',
+                color: 'var(--text-tertiary)', fontSize: 'var(--text-body-sm)', cursor: 'pointer',
+              }}
+            >
+              ✕
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={() => setShowSaveInput(true)}
+            style={{
+              height: '30px', padding: '0 12px', borderRadius: 'var(--radius-md)',
+              border: '1px solid var(--color-accent)', backgroundColor: 'transparent',
+              color: 'var(--color-accent)', fontSize: 'var(--text-body-sm)', cursor: 'pointer',
+              fontWeight: 500,
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'var(--color-accent-muted)' }}
+            onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent' }}
+          >
+            💾 保存当前
+          </button>
+        )}
+      </SettingRow>
+
+      {/* 内联重命名 */}
+      {editingId && (
+        <SettingRow label="重命名方案" hint="输入新名称后回车确认">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <input
+              autoFocus
+              value={editName}
+              onChange={(e) => setEditName(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') handleRenameConfirm(); if (e.key === 'Escape') { setEditingId(null); setEditName('') } }}
+              style={{
+                width: '130px', height: '28px', padding: '0 8px',
+                borderRadius: 'var(--radius-md)', border: '1px solid var(--color-accent)',
+                backgroundColor: 'var(--surface-default)', color: 'var(--text-primary)',
+                fontSize: 'var(--text-body-sm)', outline: 'none',
+              }}
+            />
+            <button
+              onClick={handleRenameConfirm}
+              disabled={!editName.trim()}
+              style={{
+                height: '28px', padding: '0 10px', borderRadius: 'var(--radius-md)',
+                border: 'none', backgroundColor: editName.trim() ? 'var(--color-accent)' : 'var(--border-default)',
+                color: editName.trim() ? 'var(--color-accent-text)' : 'var(--text-tertiary)',
+                fontSize: 'var(--text-body-sm)', cursor: editName.trim() ? 'pointer' : 'default',
+                fontWeight: 500,
+              }}
+            >
+              确认
+            </button>
+            <button
+              onClick={() => { setEditingId(null); setEditName('') }}
+              style={{
+                height: '28px', padding: '0 8px', borderRadius: 'var(--radius-md)',
+                border: '1px solid var(--border-default)', backgroundColor: 'transparent',
+                color: 'var(--text-tertiary)', fontSize: 'var(--text-body-sm)', cursor: 'pointer',
+              }}
+            >
+              ✕
+            </button>
+          </div>
+        </SettingRow>
+      )}
+    </Section>
+  )
+}
+
+/** 小型悬停按钮 */
+function HoverButton({ onClick, title, children }: { onClick: () => void; title: string; children: React.ReactNode }) {
+  return (
+    <button
+      onClick={onClick}
+      title={title}
+      style={{
+        width: '26px', height: '26px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+        borderRadius: 'var(--radius-md)', border: '1px solid transparent',
+        backgroundColor: 'transparent', color: 'var(--text-tertiary)',
+        fontSize: '12px', cursor: 'pointer', transition: 'border-color 0.15s, color 0.15s',
+      }}
+      onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--border-strong)'; e.currentTarget.style.color = 'var(--text-secondary)' }}
+      onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'transparent'; e.currentTarget.style.color = 'var(--text-tertiary)' }}
+    >
+      {children}
+    </button>
+  )
+}
+
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="mb-5t">
@@ -594,13 +823,12 @@ function InfoTip({ text }: { text: string }) {
       >
         ?
       </span>
-      {/* Tooltip bubble */}
+      {/* Tooltip bubble — left-aligned to avoid overflow when ⓘ is near left edge */}
       <span
         style={{
           position: 'absolute',
           bottom: 'calc(100% + 8px)',
-          left: '50%',
-          transform: 'translateX(-50%)',
+          left: 0,
           padding: '6px 10px',
           borderRadius: 'var(--radius-md)',
           backgroundColor: '#1a1a2e',
@@ -617,13 +845,15 @@ function InfoTip({ text }: { text: string }) {
           boxShadow: '0 4px 12px rgba(0,0,0,0.25)',
         }}
       >
-        {text}
-        {/* Arrow */}
+        {text.split(/\\n|\n/).map((line, i, arr) => (
+          i < arr.length - 1 ? <span key={i}>{line}<br /></span> : <span key={i}>{line}</span>
+        ))}
+        {/* Arrow — points at center of ⓘ icon (7.5px from left edge of 15px icon) */}
         <span
           style={{
             position: 'absolute',
             top: '100%',
-            left: '50%',
+            left: '7px',
             transform: 'translateX(-50%)',
             width: 0,
             height: 0,

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import Sidebar from './components/Sidebar'
 import InputBar from './components/InputBar'
 import VideoCard from './components/VideoCard'
@@ -16,9 +16,10 @@ import { useDownloadStore } from './stores/downloadStore'
 import { useParseStore, type ParsedVideo } from './stores/parseStore'
 import { useUserPrefsStore } from './stores/userPrefsStore'
 import { useHistoryStore } from './stores/historyStore'
+import { usePresetStore } from './stores/presetStore'
 import { useFfmpegStore } from './stores/ffmpegStore'
 import FfmpegBanner from './components/FfmpegBanner'
-import { Info, DownloadSimple, Spinner, GithubLogo, Heart, Warning, FilmSlate, Stack, MonitorPlay, Download, Subtitles, QrCode, GearFine, Palette, ClockCounterClockwise } from '@phosphor-icons/react'
+import { Info, DownloadSimple, Spinner, GithubLogo, Heart, Warning, FilmSlate, Stack, MonitorPlay, Download, Subtitles, QrCode, GearFine, Palette, ClockCounterClockwise, CaretDown } from '@phosphor-icons/react'
 import { useNavigationStore } from './stores/navigationStore'
 import { useToastStore } from './stores/toastStore'
 import { startDownloadManager, stopDownloadManager, showDownloadChoiceDialog } from './services/download-manager'
@@ -132,6 +133,7 @@ export default function App() {
     useHistoryStore.persist.rehydrate()
     useDownloadStore.persist.rehydrate()
     useParseStore.persist.rehydrate()
+    usePresetStore.persist.rehydrate()
 
     // 2) Now the store has any previously-saved cookie — initialize it
     async function initCookie() {
@@ -548,6 +550,8 @@ export default function App() {
                 {parseStatus === 'parsing' && <ParsingState />}
                 {parseStatus === 'success' && videos.length > 0 && (
                   <div className="flex flex-col gap-4t">
+                    {/* 预设方案快捷切换 */}
+                    <PresetQuickSwitch />
                     {/* Episode list mode: >3 episodes with episode numbering */}
                     {videos.length > 3 && videos[0].episodeIndex != null ? (
                       <EpisodeList
@@ -657,6 +661,80 @@ function ToggleChip({ label, icon, active, onChange }: {
 }
 
 /* ── Empty parse state ── */
+
+function PresetQuickSwitch() {
+  const presets = usePresetStore((s) => s.presets)
+  const activePresetId = usePresetStore((s) => s.activePresetId)
+  const applyPreset = usePresetStore((s) => s.applyPreset)
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false) }
+    document.addEventListener('mousedown', h)
+    return () => document.removeEventListener('mousedown', h)
+  }, [open])
+
+  if (presets.length === 0) return null
+
+  const activeName = activePresetId ? presets.find((p) => p.id === activePresetId)?.name ?? '默认' : '默认'
+
+  return (
+    <div ref={ref} style={{ position: 'relative', display: 'inline-flex', alignSelf: 'flex-start' }}>
+      <button
+        onClick={() => setOpen(!open)}
+        style={{
+          display: 'inline-flex', alignItems: 'center', gap: '5px',
+          height: '28px', padding: '0 10px',
+          borderRadius: 'var(--radius-md)',
+          border: `1px solid ${open ? 'var(--color-accent)' : 'var(--border-subtle)'}`,
+          backgroundColor: 'var(--surface-default)',
+          color: 'var(--text-secondary)',
+          fontSize: '12px', cursor: 'pointer', fontFamily: 'inherit',
+        }}
+      >
+        方案: <span style={{ color: activePresetId ? 'var(--color-accent)' : 'var(--text-secondary)', fontWeight: activePresetId ? 600 : 400 }}>{activeName}</span>
+        <CaretDown size={10} weight="bold" style={{ color: 'var(--text-tertiary)', transition: 'transform 0.2s', transform: open ? 'rotate(180deg)' : 'rotate(0deg)' }} />
+      </button>
+      {open && (
+        <div style={{
+          position: 'absolute', top: '100%', left: 0, zIndex: 100, marginTop: '4px',
+          minWidth: '160px', padding: '4px',
+          borderRadius: 'var(--radius-md)', border: '1px solid var(--border-strong)',
+          backgroundColor: '#1a1a2e', boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+          display: 'flex', flexDirection: 'column', gap: '1px',
+        }}>
+          <PresetQuickOption label="默认" isActive={!activePresetId} onClick={() => { applyPreset(null); setOpen(false) }} />
+          {presets.map((p) => (
+            <PresetQuickOption key={p.id} label={p.name} isActive={p.id === activePresetId} onClick={() => { applyPreset(p.id); setOpen(false) }} />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function PresetQuickOption({ label, isActive, onClick }: { label: string; isActive: boolean; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        height: '30px', padding: '0 10px', borderRadius: '6px',
+        border: 'none', backgroundColor: isActive ? 'var(--color-accent-muted)' : 'transparent',
+        color: isActive ? 'var(--color-accent)' : '#e0e0e0',
+        fontSize: '12px', cursor: 'pointer', fontFamily: 'inherit',
+        fontWeight: isActive ? 600 : 400,
+      }}
+      onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.08)' }}
+      onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.backgroundColor = 'transparent' }}
+    >
+      <span>{label}</span>
+      {isActive && <span style={{ fontSize: '10px', opacity: 0.6 }}>●</span>}
+    </button>
+  )
+}
 
 function EmptyParseState() {
   return (

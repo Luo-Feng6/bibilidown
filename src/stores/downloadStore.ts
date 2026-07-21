@@ -8,7 +8,7 @@ interface DownloadStore {
   items: DownloadItemData[]
 
   /* Actions */
-  addItem: (item: DownloadItemData) => { duplicate: boolean; id: string }
+  addItem: (item: DownloadItemData) => { duplicate: boolean; id: string; reused?: boolean }
   addItems: (items: DownloadItemData[]) => void
   removeItem: (id: string) => void
   updateItem: (id: string, patch: Partial<DownloadItemData>) => void
@@ -38,7 +38,7 @@ export const useDownloadStore = create<DownloadStore>()(
   addItem: (item) => {
     /* Duplicate detection: only block if identical bvid+cid+quality+mode (excluding failed) */
     if (item.bvid && item.cid != null) {
-      const exists = get().items.some(
+      const existing = get().items.find(
         (d) =>
           d.bvid === item.bvid &&
           d.cid === item.cid &&
@@ -46,7 +46,19 @@ export const useDownloadStore = create<DownloadStore>()(
           d.downloadMode === item.downloadMode &&
           d.status !== 'failed'
       )
-      if (exists) {
+      if (existing) {
+        // completed / paused → re-queue the existing item instead of blocking
+        if (existing.status === 'completed' || existing.status === 'paused') {
+          set((s) => ({
+            items: s.items.map((d) =>
+              d.id === existing.id
+                ? { ...d, status: 'queued' as const, progress: 0, downloadedSize: '0MB', speed: '等待中', eta: '' }
+                : d
+            ),
+          }))
+          return { duplicate: false, id: existing.id, reused: true }
+        }
+        // queued / downloading → genuinely duplicate
         return { duplicate: true, id: item.id }
       }
     }
