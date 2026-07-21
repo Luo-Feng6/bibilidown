@@ -718,7 +718,7 @@ async function parseMediaList(mlId: string): Promise<ParsedVideo[]> {
 
   const collectionTitle: string = info?.title ?? '收藏夹'
   const totalCount: number = info?.media_count ?? medias.length
-  const hasMore = data?.has_more ?? (medias.length >= ML_PAGE_SIZE && totalCount > medias.length)
+  const hasMore = (data?.has_more) || (medias.length >= ML_PAGE_SIZE && totalCount > medias.length)
 
   // 存储分页元信息到 parseStore（供 loadMoreMediaList 使用）
   if (hasMore) {
@@ -771,7 +771,7 @@ export async function loadMoreMediaList(): Promise<void> {
 
     const info = data?.info
     const collectionTitle: string = info?.title ?? '收藏夹'
-    const hasMore = data?.has_more ?? (
+    const hasMore = (data?.has_more) || (
       medias.length >= ML_PAGE_SIZE &&
       store.paginationTotalCount > nextPage * ML_PAGE_SIZE
     )
@@ -861,6 +861,10 @@ export async function resolveCidForBvid(bvid: string): Promise<number | undefine
  * @throws Error 当输入格式无法识别或 API 调用失败时
  */
 export async function parseBilibiliUrl(input: string): Promise<ParsedVideo[]> {
+  // 清理上一次解析的分页状态，避免残留到不同类型（如 ml→ss 出现幽灵"加载更多"按钮）
+  const { useParseStore } = await import('../stores/parseStore')
+  useParseStore.getState().setPagination(null, 0, 0)
+
   const s = input.trim()
   if (!s) throw new Error('请输入 B 站链接或 BV/av/ep/ss/md 号')
 
