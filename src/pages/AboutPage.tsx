@@ -9,7 +9,7 @@ import {
 import { isElectron, getElectronVersion, getChromeVersion } from '../utils/env'
 
 /* ── Version (synced with package.json) ── */
-const APP_VERSION = 'v7.7.0'
+const APP_VERSION = 'v7.7.2'
 
 /* ── Platform info ── */
 const electronVersion = getElectronVersion()
@@ -131,6 +131,7 @@ export default function AboutPage() {
         }}>
         <div className="flex justify-center mb-5t">
           <img src="/favicon.svg" alt="BibiliDown"
+            onError={(e) => { (e.target as HTMLImageElement).src = '/favicon.png' }}
             style={{
               width: '80px', height: '80px',
               filter: 'drop-shadow(0 8px 32px rgba(251,114,153,0.35))',
@@ -210,7 +211,13 @@ export default function AboutPage() {
         <CollapsibleCard title="更新日志" icon={<Info size={14} />} defaultOpen={false}>
           <div style={{ position: 'relative', padding: '12px 16px 8px 44px' }}>
             <div style={{ position: 'absolute', left: '21px', top: '20px', bottom: '20px', width: '1px', backgroundColor: 'var(--border-subtle)' }} />
-            <TimelineEntry version="v7.7.0" date="2026-07-22" latest>
+            <TimelineEntry version="v7.7.2" date="2026-07-22" latest>
+              Electron API_BASE 修复 · 下载弹窗 React 化 · LoginPanel 拆分 · QN_LABELS + keyframes 去重
+            </TimelineEntry>
+            <TimelineEntry version="v7.7.1" date="2026-07-22">
+              关于页重设计 · 浏览器/桌面端对比 · 退出登录修复 · isElectron 去重 · 文档四件套
+            </TimelineEntry>
+            <TimelineEntry version="v7.7.0" date="2026-07-22">
               预设系统 · 全站复制按钮 · 退出登录/更换账号 · 历史日期范围筛选 · 文件名模板变量插入
             </TimelineEntry>
             <TimelineEntry version="v7.6.0" date="2026-07-20">
