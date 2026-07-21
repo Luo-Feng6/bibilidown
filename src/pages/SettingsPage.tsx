@@ -58,7 +58,7 @@ function SettingsSelect({
   }, [open])
 
   return (
-    <div ref={containerRef} style={{ position: 'relative', display: 'inline-flex', ...style }}>
+    <div ref={containerRef} style={{ position: 'relative', display: 'inline-flex', zIndex: open ? 100 : 'auto', ...style }}>
       {/* Trigger */}
       <button
         type="button"
@@ -72,8 +72,8 @@ function SettingsSelect({
           padding: '0 10px 0 12px',
           borderRadius: open ? 'var(--radius-md) var(--radius-md) 0 0' : 'var(--radius-md)',
           border: `1px solid ${open ? 'var(--color-accent)' : 'var(--border-default)'}`,
-          backgroundColor: open ? 'var(--surface-raised)' : 'var(--surface-default)',
-          color: 'var(--text-primary)',
+          backgroundColor: open ? '#1a1a2e' : 'var(--surface-default)',
+          color: open ? '#e0e0e0' : 'var(--text-primary)',
           fontSize: 'var(--text-body-sm)',
           cursor: 'pointer',
           outline: 'none',
@@ -114,8 +114,8 @@ function SettingsSelect({
             borderRadius: '0 0 var(--radius-md) var(--radius-md)',
             border: '1px solid var(--color-accent)',
             borderTop: 'none',
-            backgroundColor: 'var(--surface-raised)',
-            boxShadow: '0 8px 24px rgba(0,0,0,0.3)',
+            backgroundColor: '#1a1a2e',
+            boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
             display: 'flex',
             flexDirection: 'column',
             gap: '1px',
@@ -137,7 +137,7 @@ function SettingsSelect({
                   borderRadius: '6px',
                   border: 'none',
                   backgroundColor: isSelected ? 'var(--color-accent-muted)' : 'transparent',
-                  color: isSelected ? 'var(--color-accent)' : 'var(--text-primary)',
+                  color: isSelected ? 'var(--color-accent)' : '#e0e0e0',
                   fontSize: 'var(--text-body-sm)',
                   cursor: 'pointer',
                   fontFamily: 'inherit',
@@ -145,7 +145,7 @@ function SettingsSelect({
                   transition: 'background 0.1s',
                 }}
                 onMouseEnter={(e) => {
-                  if (!isSelected) e.currentTarget.style.backgroundColor = 'var(--surface-overlay)'
+                  if (!isSelected) e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.08)'
                 }}
                 onMouseLeave={(e) => {
                   if (!isSelected) e.currentTarget.style.backgroundColor = 'transparent'
@@ -174,11 +174,14 @@ const ACCENT_COLORS = [
 
 const QUALITY_OPTIONS = ['4K', '1080P60', '1080P', '720P', '480P']
 const FILENAME_HINT: Record<string, string> = {
-  '{title}': '视频标题',
-  '{bvid}': 'BV 号',
+  '{title}': '标题',
+  '{bvid}': 'BV号',
   '{quality}': '清晰度',
-  '{up}': 'UP 主名',
+  '{up}': 'UP主',
   '{date}': '日期',
+  '{time}': '时间',
+  '{format}': '格式',
+  '{mode}': '模式',
 }
 
 export default function SettingsPage() {
@@ -356,7 +359,7 @@ export default function SettingsPage() {
         <SettingRow
           label="文件名模板"
           hint={Object.entries(FILENAME_HINT).map(([k, v]) => `${k}=${v}`).join('  ')}
-          info="自定义下载文件名。可用变量：\n{title} — 视频标题\n{bvid} — BV 号\n{quality} — 清晰度（如 1080P60）\n{up} — UP 主名称\n{date} — 当前日期（YYYY-MM-DD）"
+          info="自定义下载文件名。可用变量：\n{title} — 视频标题\n{bvid} — BV 号\n{quality} — 清晰度（如 1080P60）\n{up} — UP 主名称\n{date} — 当前日期（YYYY-MM-DD）\n{time} — 当前时间（HHMMSS）\n{format} — 输出格式（MP4 / M4A）\n{mode} — 下载模式（仅视频 / 仅音频）\n\n示例：{up}_{title}_{quality}_{date}"
         >
           <input
             value={prefs.filenameTemplate}
@@ -371,7 +374,7 @@ export default function SettingsPage() {
         <SettingRow
           label="下载模式"
           hint="弹窗 / 内联"
-          info="弹窗：加入下载队列时弹出「仅视频」「仅音频」「分别下载」「合并」四选一对话框。\n内联：清晰度下方直接显示四个下载按钮 + 字幕弹幕开关。输出格式在下方「视频/音频输出格式」设置。"
+          info="弹窗：点击「加入下载队列」后弹出选择对话框，可取消（点 ✕ 或遮罩），适合想每次确认下载方式的用户。\n\n内联：清晰度下方直接显示四个下载按钮，点击即立即加入队列开始下载（不弹窗确认），适合快速操作。\n\n输出格式由下方「视频/音频输出格式」设置控制。"
         >
           <SettingsSelect
             value={prefs.downloadModeStyle}
@@ -469,17 +472,15 @@ export default function SettingsPage() {
         </SettingRow>
       </Section>
 
-      {window.electronAPI && (
-        <Section title="启动">
-          <SettingRow
-            label={<span>启动时最小化到托盘<DesktopOnlyBadge /></span>}
-            hint="启动时最小化到托盘"
-            info="仅 Electron 桌面版可用。应用启动后不弹出窗口，直接最小化到系统托盘图标，安静后台运行。"
-          >
-            <Toggle checked={prefs.minimizeToTray} onChange={() => prefs.setMinimizeToTray(!prefs.minimizeToTray)} />
-          </SettingRow>
-        </Section>
-      )}
+      <Section title="启动">
+        <SettingRow
+          label={<span>启动时最小化到托盘<DesktopOnlyBadge /></span>}
+          hint="启动时最小化到托盘"
+          info="仅 Electron 桌面版可用。应用启动后不弹出窗口，直接最小化到系统托盘图标，安静后台运行。"
+        >
+          <Toggle checked={prefs.minimizeToTray} onChange={() => prefs.setMinimizeToTray(!prefs.minimizeToTray)} disabled={!isElectron()} />
+        </SettingRow>
+      </Section>
 
       {/* ── 高级 ── */}
       <Section title="高级">
@@ -536,7 +537,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
         }} />
         {title}
       </h2>
-      <div style={{ borderRadius: 'var(--radius-xl)', border: '1px solid var(--border-subtle)', backgroundColor: 'var(--surface-default)', overflow: 'hidden' }}>
+      <div style={{ borderRadius: 'var(--radius-xl)', border: '1px solid var(--border-subtle)', backgroundColor: 'var(--surface-default)' }}>
         {children}
       </div>
     </div>
@@ -602,8 +603,8 @@ function InfoTip({ text }: { text: string }) {
           transform: 'translateX(-50%)',
           padding: '6px 10px',
           borderRadius: 'var(--radius-md)',
-          backgroundColor: 'var(--surface-inverse, #1e1e2e)',
-          color: 'var(--text-inverse, #e0e0e0)',
+          backgroundColor: '#1a1a2e',
+          color: '#e0e0e0',
           fontSize: '11px',
           lineHeight: '1.5',
           whiteSpace: 'pre-wrap',
@@ -628,7 +629,7 @@ function InfoTip({ text }: { text: string }) {
             height: 0,
             borderLeft: '5px solid transparent',
             borderRight: '5px solid transparent',
-            borderTop: '5px solid var(--surface-inverse, #1e1e2e)',
+            borderTop: '5px solid #1a1a2e',
           }}
         />
       </span>

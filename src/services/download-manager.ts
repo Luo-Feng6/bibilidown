@@ -138,6 +138,9 @@ function sanitizeFileName(name: string): string {
  *   {quality} — 清晰度标签
  *   {up}      — UP主名称（从 parseStore 中匹配）
  *   {date}    — 当前日期 YYYY-MM-DD
+ *   {time}    — 当前时间 HHMMSS
+ *   {format}  — 输出格式（MP4 / M4A 等）
+ *   {mode}    — 下载模式（仅视频 / 仅音频 / 合并 等）
  *
  * @param template 用户设定的模板字符串（如 "{title}_{quality}"）
  * @param item     当前下载项数据
@@ -160,12 +163,24 @@ function applyFilenameTemplate(template: string, item: DownloadItemData): string
   const now = new Date()
   const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
 
+  // 下载模式中文标签
+  const modeLabels: Record<string, string> = {
+    'video-only': '仅视频', 'audio-only': '仅音频', 'separate': '分别下载', 'merge': '合并', 'auto': '自动',
+  }
+  const modeLabel = modeLabels[item.downloadMode ?? ''] ?? ''
+
+  // 时间 HHmmss
+  const timeStr = `${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}${String(now.getSeconds()).padStart(2, '0')}`
+
   let result = template
     .replace(/\{title\}/g, item.title)
     .replace(/\{bvid\}/g, item.bvid ?? '')
     .replace(/\{quality\}/g, item.quality)
     .replace(/\{up\}/g, upName)
     .replace(/\{date\}/g, dateStr)
+    .replace(/\{time\}/g, timeStr)
+    .replace(/\{format\}/g, item.format ?? '')
+    .replace(/\{mode\}/g, modeLabel)
 
   // 如果模板替换后结果为空或与模板相同（没有任何占位符被替换），回退
   if (!result.trim() || result === template) {
@@ -739,11 +754,16 @@ async function processDownloadBrowser(
   const isDash = urlResult.format === 'dash'
 
   // 如果加入队列时已选好模式，跳过弹窗
-  let mode: 'video-only' | 'audio-only' | 'separate' | 'merge'
+  let mode: 'video-only' | 'audio-only' | 'separate' | 'merge' | undefined
   if (item.downloadMode && item.downloadMode !== 'auto') {
     mode = item.downloadMode
   } else {
     mode = await showDownloadChoiceDialog(safeName, isDash, hasVideo, hasAudio, item.title)
+  }
+  if (!mode) {
+    // 用户取消了弹窗
+    store.updateItem(id, { status: 'paused', speed: '已取消', eta: '' })
+    return
   }
   store.updateItem(id, { downloadMode: mode })
 
@@ -910,7 +930,7 @@ export function showDownloadChoiceDialog(
   hasVideo: boolean,
   hasAudio: boolean,
   fullTitle: string
-): Promise<'video-only' | 'audio-only' | 'separate' | 'merge'> {
+): Promise<'video-only' | 'audio-only' | 'separate' | 'merge' | undefined> {
   const titleText = fullTitle || title
 
   // 纯音频流 → 直接返回
@@ -927,7 +947,10 @@ export function showDownloadChoiceDialog(
       box.style.cssText = 'background:var(--surface-default);border:1px solid var(--border-subtle);border-radius:12px;padding:24px;max-width:380px;width:90%;box-shadow:0 16px 48px rgba(0,0,0,0.4)'
       const formatLabel = isDash ? 'DASH 单视频流（无独立音轨）' : 'FLV 单流格式（音视频已合并）'
       box.innerHTML = `
-        <p style="margin:0 0 4px;font-size:13px;color:var(--text-tertiary)">确认下载 · ${formatLabel}</p>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+          <p style="margin:0;font-size:13px;color:var(--text-tertiary)">确认下载 · ${formatLabel}</p>
+          <button data-action="close" style="background:none;border:none;color:var(--text-tertiary);cursor:pointer;font-size:18px;line-height:1;padding:0 0 0 12px" title="取消">✕</button>
+        </div>
         <p style="margin:0 0 20px;font-size:14px;color:var(--text-primary);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${titleText}">${titleText}</p>
         <div style="display:flex;flex-direction:column;gap:8px">
           <button data-choice="video-only" style="padding:12px 16px;border:2px solid var(--color-accent);border-radius:10px;background:var(--color-accent-muted);color:var(--text-primary);cursor:pointer;font-size:14px;text-align:left;display:flex;align-items:center;gap:10px">
@@ -939,8 +962,9 @@ export function showDownloadChoiceDialog(
       document.body.appendChild(overlay)
 
       const cleanup = () => { if (overlay.parentNode) document.body.removeChild(overlay) }
-      box.querySelector('button')!.addEventListener('click', () => { cleanup(); resolve('video-only') })
-      overlay.addEventListener('click', (e) => { if (e.target === overlay) { cleanup(); resolve('video-only') } })
+      box.querySelector('[data-action="close"]')!.addEventListener('click', () => { cleanup(); resolve(undefined) })
+      box.querySelector('[data-choice]')!.addEventListener('click', () => { cleanup(); resolve('video-only') })
+      overlay.addEventListener('click', (e) => { if (e.target === overlay) { cleanup(); resolve(undefined) } })
     })
   }
 
@@ -951,7 +975,10 @@ export function showDownloadChoiceDialog(
     const box = document.createElement('div')
     box.style.cssText = 'background:var(--surface-default);border:1px solid var(--border-subtle);border-radius:12px;padding:24px;max-width:380px;width:90%;box-shadow:0 16px 48px rgba(0,0,0,0.4)'
     box.innerHTML = `
-      <p style="margin:0 0 4px;font-size:13px;color:var(--text-tertiary)">此视频音视频分离 (DASH)，请选择下载方式</p>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+        <p style="margin:0;font-size:13px;color:var(--text-tertiary)">此视频音视频分离 (DASH)，请选择下载方式</p>
+        <button data-action="close" style="background:none;border:none;color:var(--text-tertiary);cursor:pointer;font-size:18px;line-height:1;padding:0 0 0 12px" title="取消">✕</button>
+      </div>
       <p style="margin:0 0 20px;font-size:14px;color:var(--text-primary);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${titleText}">${titleText}</p>
       <div style="display:flex;flex-direction:column;gap:8px">
         <button data-choice="video-only" style="padding:12px 16px;border:1px solid var(--border-default);border-radius:10px;background:var(--surface-default);color:var(--text-primary);cursor:pointer;font-size:14px;text-align:left;display:flex;align-items:center;gap:10px">
@@ -972,6 +999,8 @@ export function showDownloadChoiceDialog(
 
     box.querySelectorAll('button').forEach(btn => {
       btn.addEventListener('click', async () => {
+        const action = btn.getAttribute('data-action')
+        if (action === 'close') { cleanup(); resolve(undefined); return }
         const choice = btn.getAttribute('data-choice') as 'video-only' | 'audio-only' | 'separate' | 'merge'
         if (choice === 'merge' && !window.electronAPI) {
           // 浏览器模式：弹出警告对话框
@@ -983,12 +1012,14 @@ export function showDownloadChoiceDialog(
           resolve(choice)
         }
       })
-      btn.addEventListener('mouseenter', () => { btn.style.borderColor = 'var(--color-accent)'; btn.style.background = 'var(--color-accent-muted)' })
-      btn.addEventListener('mouseleave', () => { btn.style.borderColor = 'var(--border-default)'; btn.style.background = 'var(--surface-default)' })
+      if (btn.hasAttribute('data-choice')) {
+        btn.addEventListener('mouseenter', () => { btn.style.borderColor = 'var(--color-accent)'; btn.style.background = 'var(--color-accent-muted)' })
+        btn.addEventListener('mouseleave', () => { btn.style.borderColor = 'var(--border-default)'; btn.style.background = 'var(--surface-default)' })
+      }
     })
 
-    // 点击遮罩关闭 → 默认仅视频
-    overlay.addEventListener('click', (e) => { if (e.target === overlay) { cleanup(); resolve('video-only') } })
+    // 点击遮罩关闭 → 取消
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) { cleanup(); resolve(undefined) } })
   })
 }
 

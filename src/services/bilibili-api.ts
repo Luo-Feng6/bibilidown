@@ -359,18 +359,13 @@ function buildQualityOptions(
   durationSec: number,
   preferredQuality?: string
 ): QualityOption[] {
-  // 构建可用的清晰度芯片
   const availableSet = new Set(availableQNs)
-
   const options: QualityOption[] = []
-
-  // 按清晰度降序排列
   const orderedQNs = [127, 126, 125, 120, 116, 112, 80, 74, 64, 32, 16, 6]
 
   for (const qn of orderedQNs) {
     const label = QN_LABELS[qn]
     if (!label) continue
-
     options.push({
       label,
       size: estimateSize(durationSec, qn),
@@ -378,7 +373,7 @@ function buildQualityOptions(
     })
   }
 
-  // 默认选中：优先使用用户偏好清晰度
+  // 默认选中：优先使用用户设置里的偏好清晰度
   if (preferredQuality) {
     const userPreferred = options.find((o) => o.label === preferredQuality && o.available)
     if (userPreferred) {

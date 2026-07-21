@@ -227,6 +227,7 @@ export default function App() {
         if (!window.electronAPI) {
           const safeName = video.title.replace(/[<>:"/\\|?*]/g, '_')
           downloadMode = await showDownloadChoiceDialog(safeName, true, true, true, video.title)
+          if (!downloadMode) return
         }
 
         let added = 0
@@ -277,6 +278,7 @@ export default function App() {
     if (!window.electronAPI) {
       const safeName = video.title.replace(/[<>:"/\\|?*]/g, '_')
       downloadMode = await showDownloadChoiceDialog(safeName, true, true, true, video.title)
+      if (!downloadMode) return
       if (downloadMode === 'audio-only') qualityLabel = '音频'
     }
 
@@ -430,6 +432,7 @@ export default function App() {
     if (!window.electronAPI && episodes.length > 0) {
       const safeName = episodes[0].title.replace(/[<>:"/\\|?*]/g, '_')
       downloadMode = await showDownloadChoiceDialog(safeName, true, true, true, episodes[0].title)
+      if (!downloadMode) return
     }
 
     for (const ep of episodes) {
@@ -606,7 +609,7 @@ export default function App() {
             onRetry={retryItem}
             onClearCompleted={clearCompleted}
             onClearFailed={clearFailed}
-            onOpenFolder={handleOpenFolder}
+            onOpenFolder={window.electronAPI ? handleOpenFolder : undefined}
             onToggleCollapse={() => setPanelCollapsed(!panelCollapsed)}
             onPanelWidthChange={setPanelWidth}
           />
