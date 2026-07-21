@@ -38,6 +38,18 @@ interface FfmpegCheckResult {
   path: string
 }
 
+interface FfmpegDownloadProgress {
+  phase: string
+  percent: number
+  message: string
+}
+
+interface FfmpegDownloadResult {
+  success: boolean
+  path?: string
+  error?: string
+}
+
 interface TrayStats {
   active: number
   completed: number
@@ -68,11 +80,13 @@ interface ElectronAPI {
   saveToDisk: (options: SaveToDiskOptions) => Promise<SaveToDiskResult>
 
   /* FFmpeg */
+  downloadFfmpeg: () => Promise<FfmpegDownloadResult>
   checkFfmpeg: () => Promise<FfmpegCheckResult>
   mergeWithFfmpeg: (options: FfmpegMergeOptions) => Promise<FfmpegMergeResult>
 
   /* Events */
   onDownloadProgress: (callback: (data: DownloadProgress) => void) => () => void
+  onFfmpegDownloadProgress: (callback: (data: FfmpegDownloadProgress) => void) => () => void
   onMaximizeChange: (callback: (isMaximized: boolean) => void) => () => void
 
   /* Tray */

@@ -33,13 +33,13 @@ interface ParseStore {
   /** Raw input URL (kept for re-parse). */
   lastUrl: string
 
-  /* ── ml 收藏夹分页状态 ── */
-  /** 当前收藏夹 ml ID（非 ml 解析时为 null） */
-  mlId: string | null
+  /* ── 分页状态（通用：ml 收藏夹等需要分页加载的场景）── */
+  /** 当前分页资源的 ID（非分页场景时为 null，如 ml 收藏夹 ID） */
+  paginationId: string | null
   /** 当前已加载到的页码 */
-  mlPage: number
-  /** 收藏夹视频总数 */
-  mlTotalCount: number
+  paginationPage: number
+  /** 分页资源的总条目数 */
+  paginationTotalCount: number
   /** 是否正在加载更多 */
   isLoadingMore: boolean
 
@@ -51,8 +51,8 @@ interface ParseStore {
   setError: (error: string) => void
   removeVideo: (id: string) => void
   reset: () => void
-  /** 设置 ml 分页元信息 */
-  setMlPagination: (mlId: string | null, page: number, total: number) => void
+  /** 设置分页元信息 */
+  setPagination: (paginationId: string | null, page: number, total: number) => void
   setLoadingMore: (loading: boolean) => void
 }
 
@@ -64,10 +64,10 @@ export const useParseStore = create<ParseStore>((set) => ({
   error: null,
   lastUrl: '',
 
-  /* ml pagination */
-  mlId: null,
-  mlPage: 0,
-  mlTotalCount: 0,
+  /* pagination */
+  paginationId: null,
+  paginationPage: 0,
+  paginationTotalCount: 0,
   isLoadingMore: false,
 
   setUrl: (url) => set({ lastUrl: url }),
@@ -92,14 +92,14 @@ export const useParseStore = create<ParseStore>((set) => ({
       status: 'idle',
       error: null,
       lastUrl: '',
-      mlId: null,
-      mlPage: 0,
-      mlTotalCount: 0,
+      paginationId: null,
+      paginationPage: 0,
+      paginationTotalCount: 0,
       isLoadingMore: false,
     }),
 
-  setMlPagination: (mlId, page, total) =>
-    set({ mlId, mlPage: page, mlTotalCount: total }),
+  setPagination: (paginationId, page, total) =>
+    set({ paginationId, paginationPage: page, paginationTotalCount: total }),
 
   setLoadingMore: (loading) => set({ isLoadingMore: loading }),
 }))

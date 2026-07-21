@@ -712,12 +712,12 @@ async function parseMediaList(mlId: string): Promise<ParsedVideo[]> {
   if (hasMore) {
     // 动态 import 避免循环依赖，parseStore 引用 bilibili-api 仅通过类型
     const { useParseStore } = await import('../stores/parseStore')
-    useParseStore.getState().setMlPagination(mlId, 1, totalCount)
+    useParseStore.getState().setPagination(mlId, 1, totalCount)
     console.log(`[parseMediaList] 收藏夹共 ${totalCount} 个视频，已加载首页 ${medias.length} 个`)
   } else {
     // 单页就装下了（≤20 条），清空分页状态
     const { useParseStore } = await import('../stores/parseStore')
-    useParseStore.getState().setMlPagination(null, 0, 0)
+    useParseStore.getState().setPagination(null, 0, 0)
   }
 
   return mediasToVideos(medias, mlId, collectionTitle, 0)
@@ -726,10 +726,10 @@ async function parseMediaList(mlId: string): Promise<ParsedVideo[]> {
 /**
  * 加载收藏夹的下一页视频。
  *
- * 从 parseStore 读取当前的 mlId 和页码，请求下一页，
+ * 从 parseStore 读取当前分页状态，请求下一页，
  * 成功后通过 appendVideos 追加到列表，并更新分页状态。
  *
- * 仅当 parseStore.mlId 非 null 时有效（即上次解析的是 ml 类型且有更多页）。
+ * 仅当 parseStore.paginationId 非 null 时有效（即上次解析的是 ml 类型且有更多页）。
  *
  * @throws Error 当没有更多页或请求失败时
  */
@@ -737,23 +737,23 @@ export async function loadMoreMediaList(): Promise<void> {
   const { useParseStore } = await import('../stores/parseStore')
   const store = useParseStore.getState()
 
-  if (!store.mlId || store.isLoadingMore) return
+  if (!store.paginationId || store.isLoadingMore) return
 
-  const nextPage = store.mlPage + 1
-  const maxPage = Math.ceil(store.mlTotalCount / ML_PAGE_SIZE)
+  const nextPage = store.paginationPage + 1
+  const maxPage = Math.ceil(store.paginationTotalCount / ML_PAGE_SIZE)
 
   if (nextPage > maxPage) return
 
   store.setLoadingMore(true)
 
   try {
-    const url = `/medialist/gateway/base/detail?media_id=${store.mlId}&pn=${nextPage}&ps=${ML_PAGE_SIZE}`
-    const data = await apiGet(url, mlHeaders(store.mlId))
+    const url = `/medialist/gateway/base/detail?media_id=${store.paginationId}&pn=${nextPage}&ps=${ML_PAGE_SIZE}`
+    const data = await apiGet(url, mlHeaders(store.paginationId))
 
     const medias = data?.medias
     if (!Array.isArray(medias) || medias.length === 0) {
       // 没有更多数据了
-      useParseStore.getState().setMlPagination(null, 0, 0)
+      useParseStore.getState().setPagination(null, 0, 0)
       return
     }
 
@@ -761,24 +761,24 @@ export async function loadMoreMediaList(): Promise<void> {
     const collectionTitle: string = info?.title ?? '收藏夹'
     const hasMore = data?.has_more ?? (
       medias.length >= ML_PAGE_SIZE &&
-      store.mlTotalCount > nextPage * ML_PAGE_SIZE
+      store.paginationTotalCount > nextPage * ML_PAGE_SIZE
     )
 
     const currentCount = useParseStore.getState().videos.length
-    const newVideos = mediasToVideos(medias, store.mlId, collectionTitle, currentCount)
+    const newVideos = mediasToVideos(medias, store.paginationId, collectionTitle, currentCount)
 
     if (hasMore) {
-      useParseStore.getState().setMlPagination(store.mlId, nextPage, store.mlTotalCount)
+      useParseStore.getState().setPagination(store.paginationId, nextPage, store.paginationTotalCount)
     } else {
       // 最后一页
-      useParseStore.getState().setMlPagination(null, 0, 0)
+      useParseStore.getState().setPagination(null, 0, 0)
     }
 
     useParseStore.getState().appendVideos(newVideos)
 
     const { useToastStore } = await import('../stores/toastStore')
     useToastStore.getState().info(
-      `已加载 ${currentCount + newVideos.length} / ${store.mlTotalCount} 个视频`
+      `已加载 ${currentCount + newVideos.length} / ${store.paginationTotalCount} 个视频`
     )
   } catch (err: any) {
     const { useToastStore } = await import('../stores/toastStore')
@@ -789,29 +789,56 @@ export async function loadMoreMediaList(): Promise<void> {
   }
 }
 
+/* ── 分 P 解析 ── */
+
+export interface VideoPage {
+  cid: number
+  page: number
+  part: string
+  duration: number
+}
+
 /**
- * 懒解析 cid：通过 BV 号获取对应视频的默认 cid。
+ * 通过 BV 号获取视频的全部分 P 信息。
  *
- * 用于 ml 收藏夹场景：medialist API 只返回 bvid 不含 cid，
- * 在用户加入下载队列时调此函数补齐 cid。
- *
- * 调用 /x/player/pagelist?bvid= 获取分 P 列表，返回第一 P 的 cid。
- * 后续可扩展为返回全部 page 信息支持多 P 选择。
+ * 调用 /x/player/pagelist?bvid= 获取分 P 列表，
+ * 返回所有 page 的 cid、页码、标题和时长。
  *
  * @param bvid BV 号
- * @returns 第一个 cid，或 undefined（API 失败/无数据时）
+ * @returns 全部分 P 列表，失败时返回空数组
  */
-export async function resolveCidForBvid(bvid: string): Promise<number | undefined> {
+export async function resolvePagesForBvid(bvid: string): Promise<VideoPage[]> {
   try {
     const url = `/x/player/pagelist?bvid=${bvid}&jsonp=jsonp`
     const pages = await apiGet(url, headersForApi(bvid))
     if (Array.isArray(pages) && pages.length > 0) {
-      return pages[0].cid as number
+      return pages.map((p: any) => ({
+        cid: p.cid as number,
+        page: p.page as number,
+        part: (p.part as string) || '',
+        duration: p.duration as number || 0,
+      }))
     }
   } catch {
-    console.warn(`[resolveCidForBvid] 无法获取 ${bvid} 的 pagelist`)
+    console.warn(`[resolvePagesForBvid] Cannot get pagelist for ${bvid}`)
   }
-  return undefined
+  return []
+}
+
+/**
+ * 懒解析 cid：通过 BV 号获取对应视频第一 P 的 cid。
+ *
+ * 用于 ml 收藏夹等场景：API 只返回 bvid 不含 cid，
+ * 在用户加入下载队列时调此函数补齐 cid。
+ *
+ * 如需全部分 P 信息（支持多 P 下载），请使用 resolvePagesForBvid。
+ *
+ * @param bvid BV 号
+ * @returns 第一 P 的 cid，或 undefined（API 失败/无数据时）
+ */
+export async function resolveCidForBvid(bvid: string): Promise<number | undefined> {
+  const pages = await resolvePagesForBvid(bvid)
+  return pages.length > 0 ? pages[0].cid : undefined
 }
 
 /* ── 公开 API ── */

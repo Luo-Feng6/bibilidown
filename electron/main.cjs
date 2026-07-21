@@ -4,6 +4,7 @@ const fs = require('fs')
 const https = require('https')
 const http = require('http')
 const { spawn } = require('child_process')
+const { downloadFfmpeg } = require('./ffmpeg-downloader.cjs')
 
 /* ── State ── */
 let mainWindow = null
@@ -413,6 +414,23 @@ ipcMain.handle('ffmpeg:merge', async (_event, { videoPath, audioPath, outputPath
       resolve({ success: false, error: `无法启动 FFmpeg: ${err.message}` })
     })
   })
+})
+
+/**
+ * Download and install FFmpeg automatically.
+ * Sends progress events via 'ffmpeg:download-progress' to the renderer.
+ */
+ipcMain.handle('ffmpeg:download', async (event) => {
+  try {
+    const ffmpegPath = await downloadFfmpeg((progress) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('ffmpeg:download-progress', progress)
+      }
+    })
+    return { success: true, path: ffmpegPath }
+  } catch (err) {
+    return { success: false, error: err.message || '未知错误' }
+  }
 })
 
 /**

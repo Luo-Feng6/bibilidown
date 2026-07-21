@@ -33,6 +33,23 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   /* ── FFmpeg ── */
   /**
+   * Download and auto-install FFmpeg for the current platform.
+   * @returns {Promise<{ success: boolean, path?: string, error?: string }>}
+   */
+  downloadFfmpeg: () => ipcRenderer.invoke('ffmpeg:download'),
+
+  /**
+   * Listen for FFmpeg download progress updates from the main process.
+   * @param {(data: { phase: string, percent: number, message: string }) => void} callback
+   * @returns {() => void} Cleanup function
+   */
+  onFfmpegDownloadProgress: (callback) => {
+    const handler = (_event, data) => callback(data)
+    ipcRenderer.on('ffmpeg:download-progress', handler)
+    return () => ipcRenderer.removeListener('ffmpeg:download-progress', handler)
+  },
+
+  /**
    * Check if FFmpeg is available on the system.
    * @returns {Promise<{ available: boolean, path: string }>}
    */

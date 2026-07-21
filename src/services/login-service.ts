@@ -48,6 +48,8 @@ export interface LoginResult {
   error?: string
   user?: BiliUserInfo
   cookieStr?: string
+  captchaRequired?: boolean
+  loginParams?: { username: string; encryptedPwd: string }
 }
 
 /* ── 通用工具 ── */
@@ -200,30 +202,41 @@ function rsaEncrypt(plaintext: string, publicKeyPem: string): string {
 /**
  * 密码登录。
  * 参考: INeedLogin.login()
+ *
+ * @param username 手机号或邮箱
+ * @param password 明文密码
+ * @param captcha 可选 — 极验验证码 token（重试时传入）
+ * @param encryptedPwd 可选 — 已加密的密码（重试时跳过 RSA 加密步骤）
  */
 export async function loginWithPassword(
   username: string,
-  password: string
+  password: string,
+  captcha?: { challenge: string; validate: string; seccode: string },
+  encryptedPwd?: string
 ): Promise<LoginResult> {
   try {
-    // 1. 获取公钥
-    const { hash, pubKey } = await getLoginKey()
+    let finalEncryptedPwd = encryptedPwd
 
-    // 2. RSA 加密密码
-    const encryptedPwd = await rsaEncrypt(hash + password, pubKey)
+    if (!finalEncryptedPwd) {
+      // 1. 获取公钥
+      const { hash, pubKey } = await getLoginKey()
+
+      // 2. RSA 加密密码
+      finalEncryptedPwd = await rsaEncrypt(hash + password, pubKey)
+    }
 
     // 3. 提交登录
     const url = `${PASSPORT_BASE}/x/passport-login/web/login`
     const params = new URLSearchParams({
       username,
-      password: encryptedPwd,
+      password: finalEncryptedPwd,
       keep: '0',
       source: 'main_mini',
       token: '',
       go_url: 'https://www.bilibili.com',
-      challenge: '',
-      validate: '',
-      seccode: '',
+      challenge: captcha?.challenge ?? '',
+      validate: captcha?.validate ?? '',
+      seccode: captcha?.seccode ?? '',
     })
 
     const res = await fetch(url, {
@@ -244,8 +257,12 @@ export async function loginWithPassword(
 
     const data = json.data
     if (data?.status === 2) {
-      // 需要验证码
-      return { success: false, error: data.message || '需要验证码，请使用二维码登录' }
+      // 需要验证码 — 返回验证码状态让调用方启动 GeeTest
+      return {
+        success: false,
+        captchaRequired: true,
+        loginParams: { username, encryptedPwd: finalEncryptedPwd },
+      }
     }
 
     // 提取 cookie
@@ -270,6 +287,30 @@ export async function loginWithPassword(
     return { success: false, error: data?.message || '未知错误' }
   } catch (err: any) {
     return { success: false, error: err.message || '网络错误' }
+  }
+}
+
+/**
+ * 获取 GeeTest 极验验证码初始化参数。
+ * 当密码登录返回 captchaRequired 时调用。
+ * 调用 GET /x/passport-login/captcha?source=main_mini
+ */
+export async function getCaptchaData(): Promise<{
+  gt: string
+  challenge: string
+  success: number
+}> {
+  const url = `${PASSPORT_BASE}/x/passport-login/captcha?source=main_mini`
+  const res = await fetch(url, { headers: getLoginHeaders() })
+  const json = await res.json()
+  if (json.code !== 0 || !json.data) {
+    throw new Error(json.message || '获取验证码数据失败')
+  }
+  const geetest = json.data.geetest ?? json.data
+  return {
+    gt: geetest.gt ?? '',
+    challenge: geetest.challenge ?? '',
+    success: geetest.success ?? 1,
   }
 }
 

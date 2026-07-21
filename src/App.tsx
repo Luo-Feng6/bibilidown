@@ -21,7 +21,7 @@ import { Info, DownloadSimple, Spinner } from '@phosphor-icons/react'
 import { useNavigationStore } from './stores/navigationStore'
 import { useToastStore } from './stores/toastStore'
 import { startDownloadManager, stopDownloadManager } from './services/download-manager'
-import { setGlobalCookie, refreshCookie, loadMoreMediaList, resolveCidForBvid, parseBilibiliUrl, validateCookie } from './services/bilibili-api'
+import { setGlobalCookie, refreshCookie, loadMoreMediaList, resolvePagesForBvid, parseBilibiliUrl, validateCookie } from './services/bilibili-api'
 
 function generateDownloadId(): string {
   return `dl_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
@@ -51,10 +51,10 @@ export default function App() {
   }))
 
   /* ── Parse store ── */
-  const { videos, status: parseStatus, mlId, mlTotalCount, isLoadingMore } = useParseStore()
+  const { videos, status: parseStatus, paginationId, paginationTotalCount, isLoadingMore } = useParseStore()
 
-  /* ── ml 分页状态 ── */
-  const mlHasMore = mlId != null && videos.length < mlTotalCount
+  /* ── 分页状态 ── */
+  const paginationHasMore = paginationId != null && videos.length < paginationTotalCount
 
   /* Download items now come from real parse + "加入下载队列" flow.
    * No more demo seed data — empty panel shows guidance. */
@@ -128,7 +128,39 @@ export default function App() {
     // 懒解析 cid（ml 收藏夹场景：有 bvid 但无 cid）
     let cid = video.cid
     if (cid == null && video.bvid) {
-      cid = await resolveCidForBvid(video.bvid)
+      const pages = await resolvePagesForBvid(video.bvid)
+      if (pages.length === 0) {
+        useToastStore.getState().error(`无法获取 ${video.title} 的视频信息，请重试`)
+        return
+      }
+
+      // 多 P 视频：每 P 作为一个独立下载项加入队列
+      if (pages.length > 1) {
+        let added = 0
+        for (const page of pages) {
+          const pageItem: DownloadItemData = {
+            id: generateDownloadId(),
+            title: `${video.title} — P${page.page} ${page.part}`.trim(),
+            quality: quality.label,
+            format: 'mp4',
+            totalSize: quality.size,
+            downloadedSize: '0MB',
+            progress: 0,
+            speed: '等待中',
+            eta: '',
+            status: 'queued',
+            bvid: video.bvid,
+            cid: page.cid,
+          }
+          addItem(pageItem)
+          added++
+        }
+        useToastStore.getState().success(`已添加 ${added} 个分P到下载队列`)
+        return
+      }
+
+      // 单 P：直接取 cid
+      cid = pages[0].cid
       if (cid == null) {
         useToastStore.getState().error(`无法获取 ${video.title} 的视频信息，请重试`)
         return
@@ -155,16 +187,23 @@ export default function App() {
   /* ── "批量加入下载队列" handler ── */
   const handleBatchAddToQueue = async (episodes: ParsedVideo[], quality: QualityOption) => {
     // 懒解析所有缺失的 cid（ml 收藏夹场景）
+    // 多 P 视频在批量模式下跳过，提示用户单独添加
     const needCid = episodes.filter((ep) => ep.cid == null && ep.bvid)
+    let multiPSkipped: string[] = []
+
     if (needCid.length > 0) {
       const results = await Promise.allSettled(
-        needCid.map((ep) => resolveCidForBvid(ep.bvid!))
+        needCid.map((ep) => resolvePagesForBvid(ep.bvid!))
       )
-      // 将解析到的 cid 写回对应 episode
+      // 将解析到的 cid 写回对应 episode，多 P 视频跳过
       results.forEach((r, i) => {
-        if (r.status === 'fulfilled' && r.value != null) {
-          needCid[i].cid = r.value
+        if (r.status === 'fulfilled' && r.value.length === 1) {
+          needCid[i].cid = r.value[0].cid
+        } else if (r.status === 'fulfilled' && r.value.length > 1) {
+          // 多 P 视频：批量模式跳过
+          multiPSkipped.push(needCid[i].title)
         }
+        // r.status === 'rejected' or 0 pages: cid stays null, will be skipped below
       })
     }
 
@@ -176,7 +215,7 @@ export default function App() {
         skipped++
         continue
       }
-      // 有 bvid 但 cid 仍为 null（API 解析失败）
+      // 有 bvid 但 cid 仍为 null（API 解析失败或已被多 P 跳过标记）
       if (ep.cid == null) {
         skipped++
         continue
@@ -205,6 +244,9 @@ export default function App() {
     }
     if (skipped > 0) {
       useToastStore.getState().warning(`${skipped} 个视频无法获取下载信息，已跳过`)
+    }
+    for (const title of multiPSkipped) {
+      useToastStore.getState().warning(`${title} 包含多个分P，请单独添加`)
     }
   }
 
@@ -265,7 +307,7 @@ export default function App() {
                       <EpisodeList
                         episodes={videos}
                         onAddToQueue={handleBatchAddToQueue}
-                        hasMore={mlHasMore}
+                        hasMore={paginationHasMore}
                         isLoadingMore={isLoadingMore}
                         onLoadMore={() => loadMoreMediaList().catch(() => {
                           /* error already shown via toast in loadMoreMediaList */

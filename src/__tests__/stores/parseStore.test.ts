@@ -30,9 +30,9 @@ beforeEach(() => {
     status: 'idle',
     error: null,
     lastUrl: '',
-    mlId: null,
-    mlPage: 0,
-    mlTotalCount: 0,
+    paginationId: null,
+    paginationPage: 0,
+    paginationTotalCount: 0,
     isLoadingMore: false,
   })
 })
@@ -129,9 +129,9 @@ describe('parseStore', () => {
         status: 'success',
         error: null,
         lastUrl: 'https://example.com',
-        mlId: 'ml123',
-        mlPage: 3,
-        mlTotalCount: 50,
+        paginationId: 'ml123',
+        paginationPage: 3,
+        paginationTotalCount: 50,
         isLoadingMore: true,
       })
 
@@ -142,30 +142,30 @@ describe('parseStore', () => {
       expect(state.status).toBe('idle')
       expect(state.error).toBeNull()
       expect(state.lastUrl).toBe('')
-      expect(state.mlId).toBeNull()
-      expect(state.mlPage).toBe(0)
-      expect(state.mlTotalCount).toBe(0)
+      expect(state.paginationId).toBeNull()
+      expect(state.paginationPage).toBe(0)
+      expect(state.paginationTotalCount).toBe(0)
       expect(state.isLoadingMore).toBe(false)
     })
   })
 
-  /* ── setMlPagination ── */
-  describe('setMlPagination', () => {
-    it('sets ml pagination metadata', () => {
-      useParseStore.getState().setMlPagination('ml999', 2, 100)
+  /* ── setPagination ── */
+  describe('setPagination', () => {
+    it('sets pagination metadata', () => {
+      useParseStore.getState().setPagination('ml999', 2, 100)
       const state = useParseStore.getState()
-      expect(state.mlId).toBe('ml999')
-      expect(state.mlPage).toBe(2)
-      expect(state.mlTotalCount).toBe(100)
+      expect(state.paginationId).toBe('ml999')
+      expect(state.paginationPage).toBe(2)
+      expect(state.paginationTotalCount).toBe(100)
     })
 
-    it('clears ml pagination when mlId is null', () => {
-      useParseStore.getState().setMlPagination('ml999', 5, 200)
-      useParseStore.getState().setMlPagination(null, 0, 0)
+    it('clears pagination when paginationId is null', () => {
+      useParseStore.getState().setPagination('ml999', 5, 200)
+      useParseStore.getState().setPagination(null, 0, 0)
       const state = useParseStore.getState()
-      expect(state.mlId).toBeNull()
-      expect(state.mlPage).toBe(0)
-      expect(state.mlTotalCount).toBe(0)
+      expect(state.paginationId).toBeNull()
+      expect(state.paginationPage).toBe(0)
+      expect(state.paginationTotalCount).toBe(0)
     })
   })
 
