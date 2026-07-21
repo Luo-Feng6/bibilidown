@@ -703,7 +703,7 @@ function PresetSection() {
   return (
     <Section title="下载方案">
       <SettingRow
-        label={<span>当前方案<InfoTip text="下载方案保存以下设置：\n• 清晰度 + 视频/音频格式\n• 弹幕 / 字幕开关\n• 文件名模板\n• 下载模式（弹窗/内联）\n\n每次打开 BibiliDown 时，上次选中的方案会自动生效，无需重新设置。\n\n切换方案会立即更新所有下载相关选项，首页的清晰度选择和弹幕/字幕也会同步变化。" /></span>}
+        label={<span>当前方案<InfoTip text="下载方案会保存清晰度、视频音频格式、弹幕字幕开关、文件名模板和下载模式。\n\n每次打开 BibiliDown 时，上次选中的方案会自动生效，不用重新设置。切换方案会立即更新首页的清晰度选择和弹幕字幕开关。" /></span>}
         hint={activePreset ? `${presets.length} 个方案已保存` : '保存当前设置为一键切换方案'}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>

@@ -11,7 +11,9 @@ import {
   FolderOpen,
   CaretRight,
   CaretDown,
+  Copy,
 } from '@phosphor-icons/react'
+import { copyText } from '../utils/clipboard'
 
 /* ── Types ── */
 
@@ -257,6 +259,11 @@ export default function DownloadItem({
             }}
           >
             {item.title}
+            <span className="copy-btn" style={{ display: 'inline-flex', marginLeft: '4px' }} title="复制标题">
+              <Copy size={12} weight="regular" style={{ cursor: 'pointer', color: 'var(--text-tertiary)', flexShrink: 0 }}
+                onClick={(e) => { e.stopPropagation(); e.preventDefault(); copyText(item.title, '标题') }}
+              />
+            </span>
           </span>
           {/* 下载模式标签（仅排队中的 DASH 项显示） */}
           {item.downloadMode && item.downloadMode !== 'auto' && item.status === 'queued' && (
@@ -481,7 +488,7 @@ export default function DownloadItem({
       {/* ── Error message ── */}
       {isFailed && item.errorMessage && (
         <div
-          className="mt-2t p-2t rounded-sm"
+          className="mt-2t p-2t rounded-sm flex items-start gap-2t"
           style={{
             backgroundColor: 'var(--color-error-bg)',
             fontSize: 'var(--text-caption)',
@@ -490,7 +497,12 @@ export default function DownloadItem({
             borderRadius: 'var(--radius-sm)',
           }}
         >
-          {item.errorMessage}
+          <span style={{ flex: 1, wordBreak: 'break-all' }}>{item.errorMessage}</span>
+          <span className="copy-btn" style={{ flexShrink: 0 }} title="复制错误信息">
+            <Copy size={12} weight="regular" style={{ cursor: 'pointer', color: 'var(--color-error)', opacity: 0.6 }}
+              onClick={() => copyText(item.errorMessage!, '错误信息')}
+            />
+          </span>
         </div>
       )}
     </div>

@@ -148,6 +148,16 @@ body {
   background-image: none;
 }
 
+/* Copy buttons — hidden by default, shown on parent hover */
+.copy-btn {
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+*:hover > .copy-btn,
+.copy-btn:hover {
+  opacity: 1;
+}
+
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) body {
     background-image: none;

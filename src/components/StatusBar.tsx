@@ -1,5 +1,8 @@
+import { useState, useEffect, useRef } from 'react'
 import { useDownloadStore } from '../stores/downloadStore'
 import { useUserPrefsStore } from '../stores/userPrefsStore'
+import { logout } from '../services/login-service'
+import { setGlobalCookie } from '../services/bilibili-api'
 
 interface StatusBarProps {
   onLoginClick?: () => void
@@ -99,29 +102,118 @@ export default function StatusBar({ onLoginClick }: StatusBarProps) {
         <span>下载队列 {activeCount()}/{totalCount}</span>
       </div>
 
-      {/* Right: version info */}
+      {/* Right: login info */}
       <div className="flex items-center gap-2t">
-        {displayName && (
-          <div className="flex items-center gap-1.5t">
-            {loginFace ? (
-              <img
-                src={loginFace}
-                alt={displayName}
-                referrerPolicy="no-referrer"
-                crossOrigin="anonymous"
-                style={{
-                  width: '16px',
-                  height: '16px',
-                  borderRadius: '50%',
-                  objectFit: 'cover',
-                }}
-                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
-              />
-            ) : null}
-            <span>{displayName}</span>
-          </div>
-        )}
+        {displayName ? (
+          <LoggedInUser
+            displayName={displayName}
+            loginFace={loginFace}
+            onSwitchAccount={() => {
+              logout()
+              useUserPrefsStore.getState().clearLoginInfo()
+              setGlobalCookie('')
+              onLoginClick?.()
+            }}
+            onLogout={() => {
+              logout()
+              useUserPrefsStore.getState().clearLoginInfo()
+              setGlobalCookie('')
+            }}
+          />
+        ) : null}
       </div>
     </footer>
+  )
+}
+
+/** 已登录用户区域 — 点击弹出退出/切换菜单 */
+function LoggedInUser({
+  displayName,
+  loginFace,
+  onSwitchAccount,
+  onLogout,
+}: {
+  displayName: string
+  loginFace: string
+  onSwitchAccount: () => void
+  onLogout: () => void
+}) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false) }
+    document.addEventListener('mousedown', h)
+    return () => document.removeEventListener('mousedown', h)
+  }, [open])
+
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      <button
+        onClick={() => setOpen(!open)}
+        title="账号管理"
+        style={{
+          display: 'flex', alignItems: 'center', gap: '5px',
+          background: 'none', border: 'none', cursor: 'pointer',
+          fontSize: 'var(--text-caption)', color: 'var(--text-secondary)',
+          fontFamily: 'inherit', padding: '2px 4px', borderRadius: '4px',
+          transition: 'background 0.15s',
+        }}
+        onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-overlay)' }}
+        onMouseLeave={(e) => { if (!open) e.currentTarget.style.background = 'none' }}
+      >
+        {loginFace ? (
+          <img
+            src={loginFace}
+            alt={displayName}
+            referrerPolicy="no-referrer"
+            crossOrigin="anonymous"
+            style={{
+              width: '16px', height: '16px', borderRadius: '50%', objectFit: 'cover',
+            }}
+            onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
+          />
+        ) : null}
+        <span>{displayName}</span>
+      </button>
+
+      {open && (
+        <div style={{
+          position: 'absolute', bottom: '100%', right: 0, zIndex: 200, marginBottom: '6px',
+          minWidth: '130px', padding: '4px',
+          borderRadius: 'var(--radius-md)', border: '1px solid var(--border-strong)',
+          backgroundColor: '#1a1a2e', boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+          display: 'flex', flexDirection: 'column', gap: '1px',
+        }}>
+          <button
+            onClick={() => { setOpen(false); onSwitchAccount() }}
+            style={{
+              display: 'flex', alignItems: 'center', gap: '6px',
+              height: '30px', padding: '0 10px', borderRadius: '6px',
+              border: 'none', backgroundColor: 'transparent', color: '#e0e0e0',
+              fontSize: '12px', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left',
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.08)' }}
+            onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent' }}
+          >
+            🔄 更换账号
+          </button>
+          <button
+            onClick={() => { setOpen(false); onLogout() }}
+            style={{
+              display: 'flex', alignItems: 'center', gap: '6px',
+              height: '30px', padding: '0 10px', borderRadius: '6px',
+              border: 'none', backgroundColor: 'transparent', color: '#e0e0e0',
+              fontSize: '12px', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left',
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'rgba(255,80,80,0.15)'; e.currentTarget.style.color = '#ff6b6b' }}
+            onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.color = '#e0e0e0' }}
+          >
+            🚪 退出账号
+          </button>
+        </div>
+      )}
+    </div>
   )
 }

@@ -11,11 +11,14 @@ import {
   Faders,
   DownloadSimple,
   UploadSimple,
+  Copy,
+  Calendar,
 } from '@phosphor-icons/react'
 import { useHistoryStore, type HistoryEntry } from '../stores/historyStore'
 import { useToastStore } from '../stores/toastStore'
 import { useShallow } from 'zustand/shallow'
 import { showConfirm, showAlert } from '../services/dialog-service'
+import { copyText } from '../utils/clipboard'
 
 interface HistoryPageProps {
   onReDownload?: (bvid: string) => void
@@ -34,6 +37,8 @@ export default function HistoryPage({ onReDownload }: HistoryPageProps) {
   )
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState<'all' | 'completed' | 'failed'>('all')
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
 
   const filtered = useMemo(() => {
     let list = [...entries]
@@ -45,9 +50,18 @@ export default function HistoryPage({ onReDownload }: HistoryPageProps) {
         (e) => e.title.toLowerCase().includes(q) || (e.bvid ?? '').toLowerCase().includes(q)
       )
     }
+    // 日期范围筛选
+    if (dateFrom) {
+      const fromTs = new Date(dateFrom).getTime()
+      list = list.filter((e) => e.downloadedAt >= fromTs)
+    }
+    if (dateTo) {
+      const toTs = new Date(dateTo + 'T23:59:59').getTime()
+      list = list.filter((e) => e.downloadedAt <= toTs)
+    }
     list.sort((a, b) => b.downloadedAt - a.downloadedAt)
     return list
-  }, [entries, search, filter])
+  }, [entries, search, filter, dateFrom, dateTo])
 
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -197,6 +211,45 @@ export default function HistoryPage({ onReDownload }: HistoryPageProps) {
                 }}
               >
                 <X size={14} weight="bold" />
+              </button>
+            )}
+          </div>
+
+          {/* Date range filter */}
+          <div className="flex items-center gap-1.5" style={{ fontSize: 'var(--text-caption)', color: 'var(--text-tertiary)' }}>
+            <Calendar size={14} weight="regular" />
+            <input
+              type="date"
+              value={dateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
+              title="开始日期"
+              style={{
+                height: '28px', width: '128px', padding: '0 6px',
+                borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)',
+                backgroundColor: 'var(--surface-default)', color: 'var(--text-primary)',
+                fontSize: 'var(--text-caption)', fontFamily: 'inherit', outline: 'none',
+              }}
+            />
+            <span>—</span>
+            <input
+              type="date"
+              value={dateTo}
+              onChange={(e) => setDateTo(e.target.value)}
+              title="结束日期"
+              style={{
+                height: '28px', width: '128px', padding: '0 6px',
+                borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)',
+                backgroundColor: 'var(--surface-default)', color: 'var(--text-primary)',
+                fontSize: 'var(--text-caption)', fontFamily: 'inherit', outline: 'none',
+              }}
+            />
+            {(dateFrom || dateTo) && (
+              <button
+                onClick={() => { setDateFrom(''); setDateTo('') }}
+                title="清除日期筛选"
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-tertiary)', padding: '2px' }}
+              >
+                <X size={12} weight="bold" />
               </button>
             )}
           </div>
@@ -361,30 +414,48 @@ function HistoryRow({
       <div className="flex-1 min-w-0">
         <p
           className="truncate"
-          style={{ fontSize: 'var(--text-body-sm)', color: 'var(--text-primary)', fontWeight: 500 }}
+          style={{ fontSize: 'var(--text-body-sm)', color: 'var(--text-primary)', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '3px' }}
           title={entry.title}
         >
-          {entry.title}
+          <span className="truncate" style={{ flex: 1 }}>{entry.title}</span>
+          <span className="copy-btn" style={{ flexShrink: 0 }} title="复制标题">
+            <Copy size={11} weight="regular" style={{ cursor: 'pointer', color: 'var(--text-tertiary)' }}
+              onClick={() => copyText(entry.title, '标题')} />
+          </span>
         </p>
         <div
           className="flex items-center gap-2t mt-0.5 flex-wrap"
           style={{ fontSize: 'var(--text-caption)', color: 'var(--text-tertiary)' }}
         >
           {entry.inputUrl && (
-            <span className="truncate" style={{ maxWidth: '180px', color: 'var(--text-tertiary)' }} title={entry.inputUrl}>
-              {entry.inputUrl}
+            <span className="truncate flex items-center gap-1" style={{ maxWidth: '180px', color: 'var(--text-tertiary)' }} title={entry.inputUrl}>
+              <span className="truncate" style={{ flex: 1 }}>{entry.inputUrl}</span>
+              <span className="copy-btn" style={{ flexShrink: 0 }} title="复制链接">
+                <Copy size={10} weight="regular" style={{ cursor: 'pointer', color: 'var(--text-tertiary)' }}
+                  onClick={() => copyText(entry.inputUrl!, '链接')} />
+              </span>
             </span>
           )}
           {entry.bvid && (
-            <span style={{ fontFamily: 'monospace', color: 'var(--text-secondary)' }}>{entry.bvid}</span>
+            <span style={{ fontFamily: 'monospace', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '2px' }}>
+              {entry.bvid}
+              <span className="copy-btn" style={{ flexShrink: 0 }} title="复制BV号">
+                <Copy size={10} weight="regular" style={{ cursor: 'pointer', color: 'var(--text-tertiary)' }}
+                  onClick={() => copyText(entry.bvid!, 'BV号')} />
+              </span>
+            </span>
           )}
           {entry.quality && <span>{entry.quality}</span>}
           {entry.format && <span>{entry.format}</span>}
           {entry.size && entry.size !== '获取中...' && <span>{entry.size}</span>}
           <span>{formatDate(entry.downloadedAt)}</span>
           {!isCompleted && entry.errorMessage && (
-            <span className="truncate" style={{ color: 'var(--color-error)', maxWidth: '200px' }}>
-              — {entry.errorMessage}
+            <span className="truncate flex items-center gap-1" style={{ color: 'var(--color-error)', maxWidth: '200px' }}>
+              <span className="truncate" style={{ flex: 1 }}>— {entry.errorMessage}</span>
+              <span className="copy-btn" style={{ flexShrink: 0 }} title="复制错误信息">
+                <Copy size={10} weight="regular" style={{ cursor: 'pointer', color: 'var(--color-error)' }}
+                  onClick={() => copyText(entry.errorMessage!, '错误')} />
+              </span>
             </span>
           )}
         </div>

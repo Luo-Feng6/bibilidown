@@ -1,9 +1,10 @@
 import { useState, useCallback } from 'react'
-import { User, Eye, Clock, Calendar, X, ImageSquare, DownloadSimple } from '@phosphor-icons/react'
+import { User, Eye, Clock, Calendar, X, ImageSquare, DownloadSimple, Copy } from '@phosphor-icons/react'
 import QualityChip, { type QualityOption } from './QualityChip'
 import { useUserPrefsStore } from '../stores/userPrefsStore'
 import { fetchDanmaku, fetchSubtitle } from '../services/bilibili-api'
 import { useToastStore } from '../stores/toastStore'
+import { copyText } from '../utils/clipboard'
 
 interface VideoCardProps {
   coverUrl: string
@@ -227,9 +228,10 @@ export default function VideoCard({
             title={title}
           >
             {title}
+            <CopyIconButton onClick={() => copyText(title, '标题')} />
           </h2>
 
-          {/* Meta: UP + stats */}
+          {/* Meta: UP + stats + BV号 */}
           <div
             className="flex flex-wrap items-center gap-x-3t gap-y-1t mt-2t"
             style={{
@@ -245,6 +247,15 @@ export default function VideoCard({
             <span className="flex items-center gap-1t"><Clock size={13} weight="regular" />{duration}</span>
             <MetaDot />
             <span className="flex items-center gap-1t"><Calendar size={13} weight="regular" />{date}</span>
+            {bvid && (
+              <>
+                <MetaDot />
+                <span className="flex items-center gap-1t" style={{ fontFamily: 'monospace', fontSize: '11px' }}>
+                  {bvid}
+                  <CopyIconButton onClick={() => copyText(bvid, 'BV号')} />
+                </span>
+              </>
+            )}
           </div>
 
           {/* Close button */}
@@ -428,6 +439,26 @@ export default function VideoCard({
 }
 
 /* ── Helpers ── */
+
+function CopyIconButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      onClick={(e) => { e.stopPropagation(); onClick() }}
+      title="复制"
+      style={{
+        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+        width: '18px', height: '18px', borderRadius: '4px',
+        border: 'none', backgroundColor: 'transparent', color: 'var(--text-tertiary)',
+        cursor: 'pointer', fontSize: '11px', flexShrink: 0,
+        opacity: 0, transition: 'opacity 0.15s, background 0.15s, color 0.15s',
+        marginLeft: '3px',
+      }}
+      className="copy-btn"
+    >
+      <Copy size={12} weight="regular" />
+    </button>
+  )
+}
 
 function MetaDot() {
   return (
