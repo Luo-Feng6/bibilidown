@@ -56,10 +56,10 @@ export default function FfmpegBanner() {
         <CircleNotch
           size={20}
           weight="bold"
+          className="animate-spin"
           style={{
             color: accentColor,
             flexShrink: 0,
-            animation: 'spin 1s linear infinite',
           }}
         />
       ) : downloadPhase === 'error' ? (
@@ -326,13 +326,6 @@ export default function FfmpegBanner() {
         )}
       </div>
 
-      {/* Inline keyframes for spinner animation */}
-      <style>{`
-        @keyframes spin {
-          from { transform: rotate(0deg); }
-          to { transform: rotate(360deg); }
-        }
-      `}</style>
     </div>
   )
 }

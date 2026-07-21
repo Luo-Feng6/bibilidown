@@ -11,8 +11,7 @@
  *   4. 提供 CSRF token（bili_jct）
  */
 
-const API_BASE = '/api/bilibili'
-const PASSPORT_BASE = '/api/passport'
+import { API_BASE, PASSPORT_BASE } from './api-base'
 
 const UA_PC =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'

@@ -18,6 +18,7 @@ import { useParseStore } from '../stores/parseStore'
 import { useToastStore } from '../stores/toastStore'
 import { useHistoryStore } from '../stores/historyStore'
 import { resolveDownloadUrl, QN_LABEL_MAP, fetchDanmaku, fetchSubtitle } from './bilibili-api'
+import { showDownloadChoice } from './dialog-service'
 import type { DownloadItemData } from '../components/DownloadItem'
 
 /* ── Augment ElectronAPI for features not yet in electron.d.ts ── */
@@ -89,14 +90,8 @@ function updateTrayFromStore(): void {
 
 /* ── 工具 ── */
 
-const QN_TO_LABEL: Record<number, string> = {
-  127: '8K', 126: '杜比视界', 125: 'HDR', 120: '4K',
-  116: '1080P60', 112: '1080P+', 80: '1080P', 74: '720P60',
-  64: '720P', 32: '480P', 16: '360P', 6: '240P',
-}
-
 function qualityLabelToQn(label: string): number {
-  for (const [qn, l] of Object.entries(QN_TO_LABEL)) {
+  for (const [qn, l] of Object.entries(QN_LABEL_MAP)) {
     if (l === label) return Number(qn)
   }
   return 80 // 默认 1080P
@@ -329,7 +324,7 @@ async function processDownload(item: DownloadItemData): Promise<void> {
       const urlResult = await resolveDownloadUrl(bvid, String(cid), qn)
 
       // 更新清晰度（实际获取到的可能不同）
-      const actualQualityLabel = QN_TO_LABEL[urlResult.quality] ?? item.quality
+      const actualQualityLabel = QN_LABEL_MAP[urlResult.quality] ?? item.quality
 
       store.updateItem(id, {
         quality: actualQualityLabel,
@@ -755,7 +750,7 @@ async function processDownloadBrowser(
   if (item.downloadMode && item.downloadMode !== 'auto') {
     mode = item.downloadMode
   } else {
-    mode = await showDownloadChoiceDialog(safeName, isDash, hasVideo, hasAudio, item.title)
+    mode = await showDownloadChoice({ title: item.title, isDash, hasVideo, hasAudio })
   }
   if (!mode) {
     // 用户取消了弹窗
@@ -911,167 +906,6 @@ async function processDownloadBrowser(
       console.warn('[DownloadManager] 字幕下载失败:', e)
     }
   }
-}
-
-/**
- * 下载确认弹窗 — 浏览器模式始终显示，按格式自适应选项。
- *
- * DASH + 音视频双流：📹仅视频 / 🎵仅音频 / 📦分别下载（三选一）
- * DASH + 仅视频流：📹仅视频 / 🎵仅音频（如果有音频）
- * FLV 单流：📹下载视频（单流，音视频已合并）
- * 仅音频流：🎵仅音频
- */
-export function showDownloadChoiceDialog(
-  title: string,
-  isDash: boolean,
-  hasVideo: boolean,
-  hasAudio: boolean,
-  fullTitle: string
-): Promise<'video-only' | 'audio-only' | 'separate' | 'merge' | undefined> {
-  const titleText = fullTitle || title
-
-  // 纯音频流 → 直接返回
-  if (!hasVideo && hasAudio) {
-    return Promise.resolve('audio-only')
-  }
-
-  // 纯视频流（无音频的 DASH 或 FLV）
-  if (hasVideo && !hasAudio) {
-    return new Promise((resolve) => {
-      const overlay = document.createElement('div')
-      overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:center;justify-content:center'
-      const box = document.createElement('div')
-      box.style.cssText = 'background:var(--surface-default);border:1px solid var(--border-subtle);border-radius:12px;padding:24px;max-width:380px;width:90%;box-shadow:0 16px 48px rgba(0,0,0,0.4)'
-      const formatLabel = isDash ? 'DASH 单视频流（无独立音轨）' : 'FLV 单流格式（音视频已合并）'
-      box.innerHTML = `
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
-          <p style="margin:0;font-size:13px;color:var(--text-tertiary)">确认下载 · ${formatLabel}</p>
-          <button data-action="close" style="background:none;border:none;color:var(--text-tertiary);cursor:pointer;font-size:18px;line-height:1;padding:0 0 0 12px" title="取消">✕</button>
-        </div>
-        <p style="margin:0 0 20px;font-size:14px;color:var(--text-primary);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${titleText}">${titleText}</p>
-        <div style="display:flex;flex-direction:column;gap:8px">
-          <button data-choice="video-only" style="padding:12px 16px;border:2px solid var(--color-accent);border-radius:10px;background:var(--color-accent-muted);color:var(--text-primary);cursor:pointer;font-size:14px;text-align:left;display:flex;align-items:center;gap:10px">
-            <span style="font-size:18px">📹</span><div><b>下载视频</b><br><span style="font-size:12px;color:var(--text-tertiary)">完整视频文件，无需额外操作</span></div></button>
-        </div>
-        <p style="margin:14px 0 0;font-size:12px;color:var(--text-tertiary);text-align:center">💡 这是单流格式，音视频已合并，下载即完整视频</p>
-      `
-      overlay.appendChild(box)
-      document.body.appendChild(overlay)
-
-      const cleanup = () => { if (overlay.parentNode) document.body.removeChild(overlay) }
-      box.querySelector('[data-action="close"]')!.addEventListener('click', () => { cleanup(); resolve(undefined) })
-      box.querySelector('[data-choice]')!.addEventListener('click', () => { cleanup(); resolve('video-only') })
-      overlay.addEventListener('click', (e) => { if (e.target === overlay) { cleanup(); resolve(undefined) } })
-    })
-  }
-
-  // DASH 双流：音视频分离，需要用户选择
-  return new Promise((resolve) => {
-    const overlay = document.createElement('div')
-    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:center;justify-content:center'
-    const box = document.createElement('div')
-    box.style.cssText = 'background:var(--surface-default);border:1px solid var(--border-subtle);border-radius:12px;padding:24px;max-width:380px;width:90%;box-shadow:0 16px 48px rgba(0,0,0,0.4)'
-    box.innerHTML = `
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
-        <p style="margin:0;font-size:13px;color:var(--text-tertiary)">此视频音视频分离 (DASH)，请选择下载方式</p>
-        <button data-action="close" style="background:none;border:none;color:var(--text-tertiary);cursor:pointer;font-size:18px;line-height:1;padding:0 0 0 12px" title="取消">✕</button>
-      </div>
-      <p style="margin:0 0 20px;font-size:14px;color:var(--text-primary);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${titleText}">${titleText}</p>
-      <div style="display:flex;flex-direction:column;gap:8px">
-        <button data-choice="video-only" style="padding:12px 16px;border:1px solid var(--border-default);border-radius:10px;background:var(--surface-default);color:var(--text-primary);cursor:pointer;font-size:14px;text-align:left;display:flex;align-items:center;gap:10px">
-          <span style="font-size:18px">📹</span><div><b>仅视频</b><br><span style="font-size:12px;color:var(--text-tertiary)">只需画面，静音下载</span></div></button>
-        <button data-choice="audio-only" style="padding:12px 16px;border:1px solid var(--border-default);border-radius:10px;background:var(--surface-default);color:var(--text-primary);cursor:pointer;font-size:14px;text-align:left;display:flex;align-items:center;gap:10px">
-          <span style="font-size:18px">🎵</span><div><b>仅音频</b><br><span style="font-size:12px;color:var(--text-tertiary)">提取声音，保存为 .m4a (AAC)</span></div></button>
-        <button data-choice="separate" style="padding:12px 16px;border:1px solid var(--border-default);border-radius:10px;background:var(--surface-default);color:var(--text-primary);cursor:pointer;font-size:14px;text-align:left;display:flex;align-items:center;gap:10px">
-          <span style="font-size:18px">📦</span><div><b>都要（分别下载）</b><br><span style="font-size:12px;color:var(--text-tertiary)">下载视频和音频两个独立文件</span></div></button>
-        <button data-choice="merge" style="padding:12px 16px;border:1px solid var(--border-default);border-radius:10px;background:var(--surface-default);color:var(--text-primary);cursor:pointer;font-size:14px;text-align:left;display:flex;align-items:center;gap:10px">
-          <span style="font-size:18px">🔗</span><div><b>合并（视频+音频合成一个文件）</b><br><span style="font-size:12px;color:var(--text-tertiary)">视频+音频合成为一个文件</span></div></button>
-      </div>
-      <p style="margin:14px 0 0;font-size:12px;color:var(--warning-600);text-align:center;background:var(--warning-50);border:1px solid var(--warning-400);border-radius:8px;padding:8px 12px;line-height:1.5">⚠️ 浏览器模式不支持音视频合并。如需自动合并，请使用桌面版 (Electron)</p>
-    `
-    overlay.appendChild(box)
-    document.body.appendChild(overlay)
-
-    const cleanup = () => { if (overlay.parentNode) document.body.removeChild(overlay) }
-
-    box.querySelectorAll('button').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        const action = btn.getAttribute('data-action')
-        if (action === 'close') { cleanup(); resolve(undefined); return }
-        const choice = btn.getAttribute('data-choice') as 'video-only' | 'audio-only' | 'separate' | 'merge'
-        if (choice === 'merge' && !window.electronAPI) {
-          // 浏览器模式：弹出警告对话框
-          cleanup()
-          const result = await showMergeWarningDialog()
-          resolve(result)
-        } else {
-          cleanup()
-          resolve(choice)
-        }
-      })
-      if (btn.hasAttribute('data-choice')) {
-        btn.addEventListener('mouseenter', () => { btn.style.borderColor = 'var(--color-accent)'; btn.style.background = 'var(--color-accent-muted)' })
-        btn.addEventListener('mouseleave', () => { btn.style.borderColor = 'var(--border-default)'; btn.style.background = 'var(--surface-default)' })
-      }
-    })
-
-    // 点击遮罩关闭 → 取消
-    overlay.addEventListener('click', (e) => { if (e.target === overlay) { cleanup(); resolve(undefined) } })
-  })
-}
-
-/**
- * 浏览器模式不支持合并的警告弹窗。
- * 当用户在浏览器模式下点击「合并」按钮时显示。
- * 返回用户选择的方案：'separate'（下载两个文件）或 'video-only'（取消）。
- */
-function showMergeWarningDialog(): Promise<'separate' | 'video-only'> {
-  return new Promise((resolve) => {
-    const overlay = document.createElement('div')
-    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:10000;display:flex;align-items:center;justify-content:center'
-    const box = document.createElement('div')
-    box.style.cssText = 'background:var(--surface-default);border:1px solid var(--border-subtle);border-radius:12px;padding:24px;max-width:440px;width:90%;box-shadow:0 16px 48px rgba(0,0,0,0.4)'
-    box.innerHTML = `
-      <p style="margin:0 0 8px;font-size:15px;color:var(--text-primary);font-weight:600">⚠️ 浏览器模式不支持自动合并</p>
-      <p style="margin:0 0 16px;font-size:13px;color:var(--text-secondary);line-height:1.7">
-        浏览器无法自动合并音视频文件。<br><br>
-        下载后你会得到两个文件：<br>
-        &nbsp;&nbsp;• 视频文件 (.mp4) — 没有声音<br>
-        &nbsp;&nbsp;• 音频文件 (.m4a) — 只有声音<br><br>
-        💡 <b>推荐方案：</b><br>
-        1. 使用 BilibiliDown 桌面版 (Electron)，支持 FFmpeg 自动合成<br>
-        2. 或下载后用 FFmpeg 命令手动合并：<br>
-        <code style="display:block;margin:6px 0 0;padding:6px 10px;background:var(--surface-overlay);border-radius:6px;font-family:'Cascadia Code','Fira Code','JetBrains Mono',Consolas,monospace;font-size:12px;color:var(--text-secondary);word-break:break-all">ffmpeg -i 视频.mp4 -i 音频.m4a -c copy 输出.mp4</code>
-      </p>
-      <p style="margin:0 0 20px;font-size:13px;color:var(--text-primary);font-weight:500">是否下载视频+音频两个文件？</p>
-      <div style="display:flex;gap:8px;justify-content:flex-end">
-        <button id="merge-warn-cancel" style="padding:10px 20px;border:1px solid var(--border-default);border-radius:8px;background:var(--surface-default);color:var(--text-secondary);cursor:pointer;font-size:14px;font-weight:500">取消</button>
-        <button id="merge-warn-confirm" style="padding:10px 20px;border:none;border-radius:8px;background:var(--color-accent);color:var(--color-accent-text);cursor:pointer;font-size:14px;font-weight:600">下载两个文件</button>
-      </div>
-    `
-    overlay.appendChild(box)
-    document.body.appendChild(overlay)
-
-    const cleanup = () => { if (overlay.parentNode) document.body.removeChild(overlay) }
-
-    box.querySelector('#merge-warn-confirm')!.addEventListener('click', () => {
-      cleanup()
-      resolve('separate')
-    })
-
-    box.querySelector('#merge-warn-cancel')!.addEventListener('click', () => {
-      cleanup()
-      resolve('video-only')
-    })
-
-    // 点击遮罩关闭 → 取消
-    overlay.addEventListener('click', (e) => {
-      if (e.target === overlay) {
-        cleanup()
-        resolve('video-only')
-      }
-    })
-  })
 }
 
 /** 通过 <a download> 直接下载 URL（绕过 CORS，无进度） */

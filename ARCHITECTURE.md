@@ -40,14 +40,15 @@ src/
 ├── App.tsx                     # 根组件（路由 / 下载管理 / 预设切换 / 空状态）
 ├── index.css                   # 全局样式 + Tailwind + .copy-btn
 │
-├── services/                   # 服务层（6 个）
+├── services/                   # 服务层（8 个）
+│   ├── api-base.ts             # 🆕 API_BASE 统一入口（Electron 生产模式自适应）
 │   ├── bilibili-api.ts         # B 站 API 封装（解析 / URL 识别 / playurl）
 │   ├── download-manager.ts     # 下载引擎（队列消费 / 并发 / 流式下载）
 │   ├── login-service.ts        # QR / 密码 / 短信登录
 │   ├── cookie-manager.ts       # Cookie 解析 / 验证 / 刷新
 │   ├── wbi-sign.ts             # WBI 签名（img_key + sub_key → MD5）
 │   ├── md5.ts                  # MD5（spark-md5 封装）
-│   └── dialog-service.ts       # 原生对话框（确认 / 警告）
+│   └── dialog-service.ts       # React 对话框服务（确认 / 警告 / 下载选择）
 │
 ├── stores/                     # Zustand 状态管理（8 个）
 │   ├── downloadStore.ts        # 下载队列 + CRUD + 智能重排队
@@ -59,7 +60,7 @@ src/
 │   ├── toastStore.ts           # Toast 通知队列
 │   └── navigationStore.ts      # 视图路由（download / settings / history / about）
 │
-├── components/                 # UI 组件（12 个）
+├── components/                 # UI 组件（20 个）
 │   ├── TitleBar.tsx            # 窗口标题栏（Electron 拖拽 + 窗口控制）
 │   ├── Sidebar.tsx             # 导航侧栏（56px 图标栏）
 │   ├── InputBar.tsx            # 链接输入 + 剪贴板检测 + 解析触发
@@ -68,7 +69,13 @@ src/
 │   ├── EpisodeList.tsx         # 剧集批量列表（>3 集自动切换）
 │   ├── DownloadPanel.tsx       # 下载面板（可拖拽宽度）
 │   ├── DownloadItem.tsx        # 下载项（进度条 / 速度 / 复制）
-│   ├── LoginPanel.tsx          # 登录侧滑面板（3 Tab）
+│   ├── DownloadChoiceDialog.tsx # 🆕 下载方式选择弹窗（React 组件）
+│   ├── LoginPanel.tsx          # 登录侧滑面板（容器 + Tab 路由）
+│   ├── QrLoginTab.tsx          # 🆕 QR 码登录 Tab
+│   ├── PasswordLoginTab.tsx    # 🆕 密码登录 Tab（含 GeeTest 验证码）
+│   ├── SmsLoginTab.tsx         # 🆕 短信登录 Tab
+│   ├── LoggedInView.tsx        # 🆕 已登录状态展示
+│   ├── InputField.tsx          # 🆕 通用输入框
 │   ├── StatusBar.tsx           # 底部状态栏（连接 / 队列 / 账号）
 │   ├── Toast.tsx               # Toast 通知
 │   ├── FfmpegBanner.tsx        # FFmpeg 检测横幅
@@ -215,6 +222,12 @@ App.tsx
   │     └── <LoggedInUser />          # 退出/更换账号菜单
   │
   ├── <LoginPanel />                  # 侧滑登录面板
+  │     ├── <QrLoginTab />
+  │     ├── <PasswordLoginTab />
+  │     ├── <SmsLoginTab />
+  │     └── <LoggedInView />
+  │
+  ├── <DownloadChoiceDialog />        # 🆕 下载方式选择弹窗
   ├── <ToastContainer />              # Toast 通知层
   └── <ConfirmDialog />               # 确认对话框层
 ```
@@ -225,11 +238,15 @@ App.tsx
 |------|------|------|
 | 路由方案 | Zustand 状态切换 | 桌面应用不需要 URL 路由 |
 | API 架构 | TypeScript 直调 B 站 API | 不依赖 Java 后端 |
-| Vite 代理 | `/api/bilibili` → `api.bilibili.com` | 绕过浏览器 CORS |
+| Vite 代理 | `/api/bilibili` → `api.bilibili.com`（开发模式） | 绕过浏览器 CORS |
+| 生产模式 API | `api-base.ts` 自动切换绝对 URL | Electron file:// 协议下 Vite 代理不可用 |
 | 下载模式 | 浏览器 Blob / Electron IPC | 双端自适应 |
 | 预设系统 | Zustand persist | 启动自动恢复上次方案 |
 | 复制功能 | `navigator.clipboard` + execCommand fallback | 兼容 HTTP/HTTPS/Electron |
 | `isElectron()` | 统一 `src/utils/env.ts` | 避免 4 处重复定义（已去重） |
+| 登录面板 | LoginPanel 拆分为 6 文件（容器 + 5 子组件） | 单文件 1131 行 → 主文件 184 行 |
+| 下载弹窗 | DownloadChoiceDialog React 组件 | 替换原生 DOM 操作，统一 UI 风格 |
+| QN_LABELS | 统一使用 `QN_LABEL_MAP`（bilibili-api 导出） | 删除 download-manager 中的重复定义 |
 
 ## Electron 主进程
 

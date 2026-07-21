@@ -19,11 +19,9 @@ import type { QualityOption } from '../components/QualityChip'
 import { getPersistedCookieString, refreshCookie } from './cookie-manager'
 import { encWbi } from './wbi-sign'
 import { useUserPrefsStore } from '../stores/userPrefsStore'
+import { API_BASE } from './api-base'
 
 /* ── 常量 ── */
-
-/** API 前缀：开发模式走 Vite 代理，生产模式需配合 Electron IPC 或 webSecurity 配置 */
-const API_BASE = '/api/bilibili'
 
 /** 标准 PC User-Agent */
 const UA_PC =

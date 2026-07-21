@@ -23,8 +23,8 @@ import FfmpegBanner from './components/FfmpegBanner'
 import { CaretDown, DownloadSimple, Spinner, MonitorPlay, Stack, FilmSlate, Subtitles, QrCode } from '@phosphor-icons/react'
 import { useNavigationStore } from './stores/navigationStore'
 import { useToastStore } from './stores/toastStore'
-import { startDownloadManager, stopDownloadManager, showDownloadChoiceDialog } from './services/download-manager'
-import { showConfirm } from './services/dialog-service'
+import { startDownloadManager, stopDownloadManager } from './services/download-manager'
+import { showConfirm, showDownloadChoice } from './services/dialog-service'
 import { setGlobalCookie, refreshCookie, loadMoreMediaList, resolvePagesForBvid, parseBilibiliUrl, validateCookie } from './services/bilibili-api'
 
 function generateDownloadId(): string {
@@ -228,8 +228,7 @@ export default function App() {
         // 浏览器模式：弹一次窗选下载模式，应用到所有分P
         let downloadMode: DownloadItemData['downloadMode'] = undefined
         if (!window.electronAPI) {
-          const safeName = video.title.replace(/[<>:"/\\|?*]/g, '_')
-          downloadMode = await showDownloadChoiceDialog(safeName, true, true, true, video.title)
+          downloadMode = await showDownloadChoice({ title: video.title, isDash: true, hasVideo: true, hasAudio: true })
           if (!downloadMode) return
         }
 
@@ -279,8 +278,7 @@ export default function App() {
     let downloadMode: DownloadItemData['downloadMode'] = undefined
     let qualityLabel = quality.label
     if (!window.electronAPI) {
-      const safeName = video.title.replace(/[<>:"/\\|?*]/g, '_')
-      downloadMode = await showDownloadChoiceDialog(safeName, true, true, true, video.title)
+      downloadMode = await showDownloadChoice({ title: video.title, isDash: true, hasVideo: true, hasAudio: true })
       if (!downloadMode) return
       if (downloadMode === 'audio-only') qualityLabel = '音频'
     }
@@ -433,8 +431,7 @@ export default function App() {
     // 浏览器模式：弹一次窗选下载模式，应用到所有批量项
     let downloadMode: DownloadItemData['downloadMode'] = undefined
     if (!window.electronAPI && episodes.length > 0) {
-      const safeName = episodes[0].title.replace(/[<>:"/\\|?*]/g, '_')
-      downloadMode = await showDownloadChoiceDialog(safeName, true, true, true, episodes[0].title)
+      downloadMode = await showDownloadChoice({ title: episodes[0].title, isDash: true, hasVideo: true, hasAudio: true })
       if (!downloadMode) return
     }
 

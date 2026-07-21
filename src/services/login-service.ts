@@ -25,11 +25,9 @@ import {
 } from './cookie-manager'
 
 import type { BiliUserInfo } from './cookie-manager'
+import { PASSPORT_BASE } from './api-base'
 
 /* ── 常量 ── */
-
-const API_BASE = '/api/bilibili'
-const PASSPORT_BASE = '/api/passport' // 登录 / 通行证 API 走 passport.bilibili.com
 
 const UA_PC =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'

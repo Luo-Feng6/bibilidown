@@ -1,5 +1,13 @@
 # 更新日志
 
+## v7.7.2 (2026-07-22)
+
+- 🔧 **Electron API_BASE 修复** — 新建 `api-base.ts` 统一入口，生产模式自动切换 `https://api.bilibili.com` 绝对 URL，解决 file:// 协议下代理失效
+- 📦 **下载弹窗 React 化** — 新建 `DownloadChoiceDialog.tsx`，替换 ~160 行原生 DOM 操作，支持 Escape/遮罩关闭/淡入缩放动画
+- 🧩 **LoginPanel 拆分** — 1131 行 → 6 文件（主容器 184 行 + 5 子组件：QrLoginTab / PasswordLoginTab / SmsLoginTab / LoggedInView / InputField）
+- 🧹 **QN_LABELS 去重** — 删除 download-manager 中重复的 QN_TO_LABEL，统一使用 bilibili-api 导出的 QN_LABEL_MAP
+- 🎨 **keyframes 去重** — 5 个组件内 `<style>` 注入的 @keyframes 迁移到 `index.css`（card-enter / dialog-fade-in / dialog-scale-in / panel-slide-in），删除与 Tailwind 重复的 spin
+
 ## v7.7.1 (2026-07-22)
 
 - 📄 关于页完全重设计 — 版本号 / 更新日志 / 10 张功能卡片
