@@ -1,0 +1,152 @@
+/* ═══════════════════════════════════════════════════════
+   BilibiliDown — Global Stylesheet Entry Point
+   ═══════════════════════════════════════════════════════ */
+
+/* Layer 1: Design Tokens (must load first) */
+@import './styles/tokens.css';
+
+/* Layer 2: Tailwind Directives */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ═══════════════════════════════════════════════════════
+   Tailwind Base Layer Overrides
+   ═══════════════════════════════════════════════════════ */
+@layer base {
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  html, body, #root {
+    height: 100%;
+    width: 100%;
+    overflow: hidden;
+  }
+
+  body {
+    font-family: var(--font-body);
+    font-size: var(--text-body);
+    line-height: var(--text-body-lh);
+    color: var(--text-primary);
+    background-color: var(--surface-root);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    /* Disable text selection drag (desktop app behavior) */
+    user-select: none;
+  }
+
+  /* Allow text selection in input fields */
+  input, textarea {
+    user-select: text;
+  }
+
+  /* Focus ring — consistent across all interactive elements */
+  :focus-visible {
+    outline: none;
+    box-shadow: var(--shadow-ring);
+    border-radius: var(--radius-sm);
+  }
+
+  /* Custom scrollbar — thin & subtle */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: var(--text-tertiary);
+    border-radius: var(--radius-full);
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--text-secondary);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
+   Tailwind Components Layer — Reusable classes
+   ═══════════════════════════════════════════════════════ */
+@layer components {
+  /* ── Acrylic panel utility ── */
+  .glass-panel {
+    background: var(--acrylic-bg);
+    backdrop-filter: blur(var(--acrylic-blur));
+    -webkit-backdrop-filter: blur(var(--acrylic-blur));
+    border: 1px solid var(--acrylic-border);
+  }
+
+  /* ── Mica background utility ── */
+  .mica-bg {
+    background: var(--mica-bg);
+  }
+
+  /* ── Card hover lift ── */
+  .card-hover {
+    transition: box-shadow var(--duration-normal) var(--ease-out);
+  }
+  .card-hover:hover {
+    box-shadow: var(--card-shadow-hover);
+  }
+
+  /* ── Progress bar glow (signature element) ── */
+  .progress-glow {
+    box-shadow: var(--progress-glow);
+  }
+
+  /* ── Skeleton shimmer ── */
+  .skeleton {
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      var(--skeleton-shimmer) 50%,
+      transparent 100%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 1.5s ease-in-out infinite;
+  }
+
+  @keyframes shimmer {
+    0%   { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+  }
+
+  /* ── Focus ring (for programmatic focus) ── */
+  .focus-ring {
+    box-shadow: var(--shadow-ring);
+  }
+
+  /* ── Title bar drag region ── */
+  .titlebar-drag {
+    -webkit-app-region: drag;
+  }
+  .titlebar-no-drag {
+    -webkit-app-region: no-drag;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
+   Theme-specific overrides
+   ═══════════════════════════════════════════════════════ */
+
+/* Subtle blue glow at top of page for light mode — adds polish */
+body {
+  background-image: radial-gradient(ellipse at 50% 0%, rgba(59, 130, 246, 0.03) 0%, transparent 60%);
+  background-attachment: fixed;
+}
+
+[data-theme="dark"] body {
+  background-image: none;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) body {
+    background-image: none;
+  }
+}

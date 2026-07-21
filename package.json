@@ -1,0 +1,94 @@
+{
+  "name": "bilibilidown",
+  "version": "7.0.0",
+  "description": "BilibiliDown — Modern Bilibili Video Downloader",
+  "type": "module",
+  "main": "electron/main.cjs",
+  "scripts": {
+    "dev": "vite",
+    "dev:electron": "concurrently -k \"vite\" \"wait-on tcp:5173 && cross-env VITE_DEV_SERVER_URL=http://localhost:5173 ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/ ELECTRON_CACHE=D:/all/app/electron-cache electron .\"",
+    "gen-icons": "node scripts/gen-icons.cjs",
+    "build": "npm run gen-icons && tsc && vite build",
+    "build:electron": "npm run gen-icons && tsc && vite build && cross-env ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/ ELECTRON_BUILDER_BINARIES_MIRROR=https://npmmirror.com/mirrors/electron-builder-binaries/ ELECTRON_CACHE=D:/all/app/electron-cache electron-builder",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "preview": "vite preview",
+    "electron": "cross-env VITE_DEV_SERVER_URL=http://localhost:5173 ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/ ELECTRON_CACHE=D:/all/app/electron-cache electron ."
+  },
+  "dependencies": {
+    "@phosphor-icons/react": "^2.1.10",
+    "jsencrypt": "^3.5.4",
+    "qrcode": "^1.5.4",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "spark-md5": "^3.0.2",
+    "zustand": "^5.0.14"
+  },
+  "build": {
+    "appId": "com.bilibilidown.app",
+    "productName": "BilibiliDown",
+    "icon": "build/icon.png",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "ffmpeg",
+        "to": "ffmpeg"
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    },
+    "mac": {
+      "target": "dmg"
+    },
+    "linux": {
+      "target": "AppImage"
+    }
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "^7.0.0",
+    "@testing-library/react": "^16.3.2",
+    "@types/qrcode": "^1.5.6",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@types/spark-md5": "^3.0.5",
+    "@vitejs/plugin-react": "^4.3.1",
+    "autoprefixer": "^10.4.19",
+    "concurrently": "^10.0.3",
+    "cross-env": "^10.1.0",
+    "electron": "^43.1.1",
+    "electron-builder": "^26.15.3",
+    "jsdom": "^29.1.1",
+    "postcss": "^8.4.39",
+    "sharp": "^0.35.3",
+    "tailwindcss": "^3.4.6",
+    "typescript": "^5.5.3",
+    "vite": "^5.3.4",
+    "vitest": "^4.1.10",
+    "wait-on": "^9.0.10"
+  }
+}

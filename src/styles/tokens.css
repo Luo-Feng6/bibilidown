@@ -1,0 +1,419 @@
+/* ═══════════════════════════════════════════════════════════════════════
+   BilibiliDown Design Tokens — v7.0.0
+   Based on: visual-design-specification.md
+   Architecture: Primitive → Semantic → Component (3-layer)
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* ====================================================================
+   LAYER 1: PRIMITIVE TOKENS
+   Raw design values without semantic meaning.
+   ==================================================================== */
+
+:root {
+  /* ── Neutral Gray Scale (Slate — cold-tinted for Mica harmony) ── */
+  --gray-0:   #FFFFFF;
+  --gray-50:  #F8FAFC;
+  --gray-100: #F1F5F9;
+  --gray-200: #E2E8F0;
+  --gray-300: #CBD5E1;
+  --gray-400: #94A3B8;
+  --gray-500: #64748B;
+  --gray-600: #475569;
+  --gray-700: #334155;
+  --gray-800: #1E293B;
+  --gray-850: #172033;
+  --gray-900: #0F172A;
+  --gray-950: #020617;
+
+  /* ── Accent Scale (Default: Windows 11 Blue) ── */
+  --accent-50:  #EFF6FF;
+  --accent-100: #DBEAFE;
+  --accent-200: #BFDBFE;
+  --accent-300: #93C5FD;
+  --accent-400: #60A5FA;
+  --accent-500: #3B82F6;
+  --accent-600: #2563EB;
+  --accent-700: #1D4ED8;
+  --accent-800: #1E40AF;
+  --accent-900: #1E3A8A;
+
+  /* ── Bilibili Brand Pink ── */
+  --brand-pink:       #FB7299;
+  --brand-pink-light:  #FF85AD;
+  --brand-pink-dark:   #E55A80;
+
+  /* ── Semantic: Success (Green) ── */
+  --success-50:  #F0FDF4;
+  --success-400: #4ADE80;
+  --success-500: #22C55E;
+  --success-600: #16A34A;
+  --success-700: #15803D;
+
+  /* ── Semantic: Warning (Amber) ── */
+  --warning-50:  #FFFBEB;
+  --warning-400: #FBBF24;
+  --warning-500: #F59E0B;
+  --warning-600: #D97706;
+  --warning-700: #B45309;
+
+  /* ── Semantic: Error (Red) ── */
+  --error-50:  #FEF2F2;
+  --error-400: #F87171;
+  --error-500: #EF4444;
+  --error-600: #DC2626;
+  --error-700: #B91C1C;
+}
+
+/* ====================================================================
+   LAYER 2: SEMANTIC TOKENS
+   Purpose-based aliases. These are the ONLY tokens that change on
+   theme switch — layer 1 primitives and layer 3 components are static.
+   ==================================================================== */
+
+/* ── LIGHT MODE (default) ── */
+:root,
+[data-theme="light"] {
+  /* Surface hierarchy (lowest → highest — dark-to-light stacking)
+     Root is the darkest base (page), cards sit brighter on top. */
+  --surface-root:       var(--gray-50);
+  --surface-default:    var(--gray-0);
+  --surface-elevated:   var(--gray-0);
+  --surface-overlay:    rgba(0, 0, 0, 0.05);
+
+  /* Text hierarchy — stepped for ≥4.5:1 contrast on white */
+  --text-primary:       var(--gray-900);
+  --text-secondary:     var(--gray-700);
+  --text-tertiary:      var(--gray-500);
+  --text-disabled:      var(--gray-400);
+  --text-inverse:       var(--gray-0);
+
+  /* Borders — visible against white surfaces */
+  --border-default:     var(--gray-200);
+  --border-subtle:      rgba(0, 0, 0, 0.06);
+  --border-strong:      var(--gray-400);
+
+  /* Accent (semantic mapping) — one step darker for white-background legibility */
+  --color-accent:        var(--accent-600);
+  --color-accent-hover:  var(--accent-700);
+  --color-accent-text:   var(--gray-0);
+  --color-accent-muted:  var(--accent-50);
+
+  /* Semantic states — deeper foregrounds against pastel backgrounds */
+  --color-success:       var(--success-600);
+  --color-success-bg:    var(--success-50);
+  --color-warning:       var(--warning-600);
+  --color-warning-bg:    var(--warning-50);
+  --color-error:         var(--error-600);
+  --color-error-bg:      var(--error-50);
+
+  /* Acrylic / Mica material */
+  --acrylic-bg:          rgba(255, 255, 255, 0.72);
+  --acrylic-blur:        24px;
+  --acrylic-border:      rgba(0, 0, 0, 0.06);
+  --mica-bg:             rgba(248, 250, 252, 0.85);
+
+  /* Skeleton shimmer — dark shimmer visible on light surfaces */
+  --skeleton-shimmer:    rgba(0, 0, 0, 0.06);
+}
+
+/* ── DARK MODE ── */
+[data-theme="dark"] {
+  /* Surface hierarchy */
+  --surface-root:       var(--gray-900);
+  --surface-default:    var(--gray-800);
+  --surface-elevated:   var(--gray-850);
+  --surface-overlay:    rgba(0, 0, 0, 0.45);
+
+  /* Text hierarchy */
+  --text-primary:       var(--gray-50);
+  --text-secondary:     var(--gray-400);
+  --text-tertiary:      var(--gray-500);
+  --text-disabled:      var(--gray-600);
+  --text-inverse:       var(--gray-900);
+
+  /* Borders */
+  --border-default:     rgba(255, 255, 255, 0.08);
+  --border-subtle:      rgba(255, 255, 255, 0.04);
+  --border-strong:      rgba(255, 255, 255, 0.14);
+
+  /* Accent — brightness pulled back for dark mode comfort */
+  --color-accent:        var(--accent-400);
+  --color-accent-hover:  var(--accent-300);
+  --color-accent-text:   var(--gray-900);
+  --color-accent-muted:  rgba(59, 130, 246, 0.15);
+
+  /* Semantic states — lowered luminance */
+  --color-success:       var(--success-400);
+  --color-success-bg:    rgba(34, 197, 94, 0.12);
+  --color-warning:       var(--warning-400);
+  --color-warning-bg:    rgba(245, 158, 11, 0.12);
+  --color-error:         var(--error-400);
+  --color-error-bg:      rgba(239, 68, 68, 0.12);
+
+  /* Acrylic / Mica — darker and deeper */
+  --acrylic-bg:          rgba(15, 23, 42, 0.78);
+  --acrylic-blur:        24px;
+  --acrylic-border:      rgba(255, 255, 255, 0.06);
+  --mica-bg:             rgba(15, 23, 42, 0.88);
+
+  /* Skeleton shimmer — light shimmer visible on dark surfaces */
+  --skeleton-shimmer:    rgba(255, 255, 255, 0.08);
+}
+
+/* ── System preference auto-detection ── */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --surface-root:       var(--gray-900);
+    --surface-default:    var(--gray-800);
+    --surface-elevated:   var(--gray-850);
+    --surface-overlay:    rgba(0, 0, 0, 0.45);
+    --text-primary:       var(--gray-50);
+    --text-secondary:     var(--gray-400);
+    --text-tertiary:      var(--gray-500);
+    --text-disabled:      var(--gray-600);
+    --text-inverse:       var(--gray-900);
+    --border-default:     rgba(255, 255, 255, 0.08);
+    --border-subtle:      rgba(255, 255, 255, 0.04);
+    --border-strong:      rgba(255, 255, 255, 0.14);
+    --color-accent:        var(--accent-400);
+    --color-accent-hover:  var(--accent-300);
+    --color-accent-text:   var(--gray-900);
+    --color-accent-muted:  rgba(59, 130, 246, 0.15);
+    --color-success:       var(--success-400);
+    --color-success-bg:    rgba(34, 197, 94, 0.12);
+    --color-warning:       var(--warning-400);
+    --color-warning-bg:    rgba(245, 158, 11, 0.12);
+    --color-error:         var(--error-400);
+    --color-error-bg:      rgba(239, 68, 68, 0.12);
+    --acrylic-bg:          rgba(15, 23, 42, 0.78);
+    --acrylic-blur:        24px;
+    --acrylic-border:      rgba(255, 255, 255, 0.06);
+    --mica-bg:             rgba(15, 23, 42, 0.88);
+    --skeleton-shimmer:    rgba(255, 255, 255, 0.08);
+  }
+}
+
+/* ====================================================================
+   TYPOGRAPHY TOKENS
+   ==================================================================== */
+:root {
+  /* Font stacks */
+  --font-display: "Segoe UI Variable Display", "Segoe UI",
+                  "SF Pro Display", system-ui, -apple-system, sans-serif;
+  --font-body:    "Segoe UI Variable Text", "Segoe UI",
+                  "SF Pro Text", system-ui, -apple-system, sans-serif;
+  --font-mono:    "Cascadia Code", "Cascadia Mono", "JetBrains Mono",
+                  "Fira Code", "Consolas", monospace;
+
+  /* Type scale (Major Third 1.25) */
+  --text-caption:     0.6875rem;   /* 11px */
+  --text-caption-lh:  1.4;
+  --text-body-sm:     0.8125rem;   /* 13px */
+  --text-body-sm-lh:  1.5;
+  --text-body:        0.875rem;    /* 14px */
+  --text-body-lh:     1.5;
+  --text-body-lg:     1rem;        /* 16px */
+  --text-body-lg-lh:  1.5;
+  --text-heading-sm:  1.125rem;    /* 18px */
+  --text-heading-sm-lh: 1.4;
+  --text-heading:     1.375rem;    /* 22px */
+  --text-heading-lh:  1.35;
+  --text-heading-lg:  1.75rem;     /* 28px */
+  --text-heading-lg-lh: 1.3;
+  --text-heading-xl:  2rem;        /* 32px */
+  --text-heading-xl-lh: 1.25;
+
+  /* Font weights */
+  --weight-regular:  400;
+  --weight-medium:   500;
+  --weight-semibold: 600;
+  --weight-bold:     700;
+}
+
+/* ====================================================================
+   SPACING TOKENS (4px base grid)
+   ==================================================================== */
+:root {
+  --space-1:  0.25rem;   /* 4px  — icon↔text gap, micro gap */
+  --space-2:  0.5rem;    /* 8px  — chip gap, small inner gap */
+  --space-3:  0.75rem;   /* 12px — card inner element gap */
+  --space-4:  1rem;      /* 16px — card padding, standard gap */
+  --space-5:  1.25rem;   /* 20px — region inner gap (rare) */
+  --space-6:  1.5rem;    /* 24px — section gap */
+  --space-8:  2rem;      /* 32px — large region gap */
+  --space-10: 2.5rem;    /* 40px — page-level gap */
+  --space-12: 3rem;      /* 48px — page margin */
+}
+
+/* ====================================================================
+   RADIUS TOKENS
+   ==================================================================== */
+:root {
+  --radius-none:  0;
+  --radius-xs:    0.125rem;   /* 2px  — progress bar */
+  --radius-sm:    0.25rem;    /* 4px  — badge, code block */
+  --radius-md:    0.375rem;   /* 6px  — button, inner chip */
+  --radius-lg:    0.5rem;     /* 8px  — input, chip outer */
+  --radius-xl:    0.75rem;    /* 12px — card, panel */
+  --radius-2xl:   1rem;       /* 16px — large card, floating panel */
+  --radius-full:  9999px;     /* pill, avatar */
+}
+
+/* ====================================================================
+   SHADOW TOKENS
+   ==================================================================== */
+:root,
+[data-theme="light"] {
+  --shadow-none:   none;
+  --shadow-xs:     0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-sm:     0 1px 3px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.06);
+  --shadow-md:     0 4px 12px rgba(0, 0, 0, 0.08);
+  --shadow-lg:     0 8px 24px rgba(0, 0, 0, 0.12);
+  --shadow-xl:     0 16px 40px rgba(0, 0, 0, 0.16);
+  --shadow-ring:   0 0 0 3px rgba(59, 130, 246, 0.12);
+  --shadow-glow:   0 0 12px rgba(59, 130, 246, 0.3);
+}
+
+[data-theme="dark"] {
+  --shadow-none:   none;
+  --shadow-xs:     0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-sm:     0 2px 4px rgba(0, 0, 0, 0.4);
+  --shadow-md:     0 4px 12px rgba(0, 0, 0, 0.5);
+  --shadow-lg:     0 8px 24px rgba(0, 0, 0, 0.6);
+  --shadow-xl:     0 16px 40px rgba(0, 0, 0, 0.7);
+  --shadow-ring:   0 0 0 3px rgba(96, 165, 250, 0.2);
+  --shadow-glow:   0 0 16px rgba(96, 165, 250, 0.5);
+}
+
+/* Dark auto-detection for shadows */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --shadow-xs:     0 1px 2px rgba(0, 0, 0, 0.3);
+    --shadow-sm:     0 2px 4px rgba(0, 0, 0, 0.4);
+    --shadow-md:     0 4px 12px rgba(0, 0, 0, 0.5);
+    --shadow-lg:     0 8px 24px rgba(0, 0, 0, 0.6);
+    --shadow-xl:     0 16px 40px rgba(0, 0, 0, 0.7);
+    --shadow-ring:   0 0 0 3px rgba(96, 165, 250, 0.2);
+    --shadow-glow:   0 0 16px rgba(96, 165, 250, 0.5);
+  }
+}
+
+/* ====================================================================
+   MOTION TOKENS
+   ==================================================================== */
+:root {
+  /* Easing curves */
+  --ease-out:    cubic-bezier(0.0, 0.0, 0.2, 1.0);
+  --ease-in:     cubic-bezier(0.4, 0.0, 1.0, 1.0);
+  --ease-in-out: cubic-bezier(0.4, 0.0, 0.2, 1.0);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  /* Durations */
+  --duration-instant:  0ms;
+  --duration-fast:     100ms;
+  --duration-normal:   200ms;
+  --duration-slow:     300ms;
+  --duration-modal:    400ms;
+}
+
+/* ====================================================================
+   ICON TOKENS
+   ==================================================================== */
+:root {
+  --icon-size-xs:  0.875rem;   /* 14px — status bar */
+  --icon-size-sm:  1rem;       /* 16px — card inline */
+  --icon-size-md:  1.25rem;    /* 20px — navigation, titlebar */
+  --icon-size-lg:  1.5rem;     /* 24px — empty state, feature */
+  --icon-size-xl:  2rem;       /* 32px — brand */
+  --icon-size-2xl: 3rem;       /* 48px — hero */
+  --icon-stroke:   1.5px;
+}
+
+/* ====================================================================
+   LAYER 3: COMPONENT TOKENS
+   Per-component overrides referencing semantic layer.
+   ==================================================================== */
+:root {
+  /* ── Input Bar ── */
+  --input-height:         44px;
+  --input-radius:         var(--radius-lg);
+  --input-bg:             var(--surface-default);
+  --input-border:         var(--border-default);
+  --input-border-focus:   var(--color-accent);
+  --input-ring-focus:     0 0 0 3px rgba(59, 130, 246, 0.12);
+  --input-text:           var(--text-primary);
+  --input-placeholder:    var(--text-tertiary);
+
+  /* ── Video Card ── */
+  --card-radius:          var(--radius-xl);
+  --card-bg:              var(--surface-default);
+  --card-border:          var(--border-subtle);
+  --card-shadow:          var(--shadow-sm);
+  --card-shadow-hover:    var(--shadow-md);
+  --card-padding:         var(--space-4);
+  --card-gap:             var(--space-4);
+
+  /* ── Quality Chip ── */
+  --chip-height:          48px;
+  --chip-min-width:       96px;
+  --chip-radius:          var(--radius-lg);
+  --chip-gap:             var(--space-2);
+  --chip-bg-rest:         transparent;
+  --chip-border-rest:     var(--border-default);
+  --chip-text-rest:       var(--text-primary);
+  --chip-bg-hover:        rgba(0, 0, 0, 0.06);
+  --chip-border-hover:    var(--gray-400);
+  --chip-bg-selected:     var(--color-accent);
+  --chip-border-selected: var(--color-accent);
+  --chip-text-selected:   var(--color-accent-text);
+  --chip-bg-disabled:     var(--gray-100);
+  --chip-text-disabled:   var(--text-disabled);
+
+  /* ── Button ── */
+  --btn-height:           36px;
+  --btn-radius:           var(--radius-md);
+  --btn-padding-x:        var(--space-4);
+  --btn-primary-bg:       var(--color-accent);
+  --btn-primary-text:     var(--color-accent-text);
+  --btn-primary-hover:    var(--color-accent-hover);
+
+  /* ── Progress Bar (signature element) ── */
+  --progress-height:      4px;
+  --progress-radius:      var(--radius-xs);
+  --progress-bg:          rgba(0, 0, 0, 0.06);
+  --progress-fill:        var(--color-accent);
+  --progress-glow:        0 0 8px rgba(59, 130, 246, 0.4);
+
+  /* ── Download Panel ── */
+  --panel-width:          320px;
+  --panel-bg:             var(--acrylic-bg);
+  --panel-blur:           var(--acrylic-blur);
+  --panel-border:         var(--acrylic-border);
+
+  /* ── Status Bar ── */
+  --statusbar-height:     28px;
+
+  /* ── Navigation Sidebar ── */
+  --sidebar-width:        56px;
+}
+
+/* ====================================================================
+   GLOBAL RESETS
+   ==================================================================== */
+
+/* Theme transition — smooth background/color switch */
+:root {
+  transition: background-color var(--duration-slow) var(--ease-out),
+              color var(--duration-slow) var(--ease-out);
+}
+
+/* Reduced motion: kill all animations */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
