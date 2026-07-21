@@ -143,6 +143,36 @@ App.tsx
   └── useNavigationStore   ← Sidebar 读写 → App 路由
 ```
 
+## 预设系统
+
+下载方案（Preset）可在设置页创建/更新/删除/重命名，保存 7 项下载配置的完整快照：
+
+| 字段 | 存储内容 |
+|------|---------|
+| `preferredQuality` | 1080P60 / 4K / 720P / ... |
+| `preferredFormat` | mp4 / flv / mkv |
+| `preferredAudioFormat` | m4a / m4s / mp3 |
+| `downloadDanmaku` | true / false |
+| `downloadSubtitle` | true / false |
+| `filenameTemplate` | `{title}_{quality}` 等 |
+| `downloadModeStyle` | popup / inline |
+
+### 同步机制
+
+```
+设置页                          下载页
+┌──────────────────┐           ┌──────────────────────┐
+│ PresetSection     │           │ PresetQuickSwitch     │
+│                  │  ────────→ │                      │
+│ 💾 保存当前为方案  │  presetStore  │  方案: 默认 ▾  🔄  │
+│ ✏ 重命名          │           │                      │
+│ 🗑 删除           │           │  点击 🔄 重新 apply   │
+│                  │           │  → 同步设置页最新配置  │
+└──────────────────┘           └──────────────────────┘
+```
+
+**applyPreset()** 将方案的 7 个字段写入 `userPrefsStore`，主页的 danmaku/subtitle ToggleChip 和 VideoCard 的 format 自动跟随变化。`activePresetId` 记录当前选中的方案，启动时从 persist 恢复。
+
 ## 组件树
 
 ```
