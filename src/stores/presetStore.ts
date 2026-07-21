@@ -38,6 +38,8 @@ interface PresetStore {
   deletePreset: (id: string) => void
   /** 应用方案 → 写入 userPrefsStore；id 为 null 则恢复默认 */
   applyPreset: (id: string | null) => void
+  /** 用当前 userPrefs 覆盖已有方案 */
+  updatePreset: (id: string) => void
   /** 重命名方案 */
   renamePreset: (id: string, name: string) => void
 }
@@ -121,6 +123,15 @@ export const usePresetStore = create<PresetStore>()(
         prefs.setDownloadSubtitle(preset.downloadSubtitle)
         prefs.setFilenameTemplate(preset.filenameTemplate)
         prefs.setDownloadModeStyle(preset.downloadModeStyle)
+      },
+
+      updatePreset: (id) => {
+        const current = snapshotCurrentPrefs()
+        set((s) => ({
+          presets: s.presets.map((p) =>
+            p.id === id ? { ...p, ...current } : p
+          ),
+        }))
       },
 
       renamePreset: (id, name) => {

@@ -676,41 +676,68 @@ function PresetQuickSwitch() {
     return () => document.removeEventListener('mousedown', h)
   }, [open])
 
-  if (presets.length === 0) return null
-
   const activeName = activePresetId ? presets.find((p) => p.id === activePresetId)?.name ?? '默认' : '默认'
 
+  const handleSync = () => {
+    // 重新应用当前方案（或默认），强制下载页同步设置
+    applyPreset(activePresetId)
+  }
+
   return (
-    <div ref={ref} style={{ position: 'relative', display: 'inline-flex', alignSelf: 'flex-start' }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', alignSelf: 'flex-start' }}>
+      {/* 预设选择下拉 */}
+      <div ref={ref} style={{ position: 'relative', display: 'inline-flex' }}>
+        <button
+          onClick={() => setOpen(!open)}
+          title="选择下载方案（同步清晰度、格式、弹幕/字幕等设置）"
+          style={{
+            display: 'inline-flex', alignItems: 'center', gap: '5px',
+            height: '28px', padding: '0 10px',
+            borderRadius: 'var(--radius-md)',
+            border: `1px solid ${open ? 'var(--color-accent)' : 'var(--border-subtle)'}`,
+            backgroundColor: 'var(--surface-default)',
+            color: 'var(--text-secondary)',
+            fontSize: '12px', cursor: 'pointer', fontFamily: 'inherit',
+          }}
+        >
+          方案: <span style={{ color: activePresetId ? 'var(--color-accent)' : 'var(--text-secondary)', fontWeight: activePresetId ? 600 : 400 }}>{activeName}</span>
+          <CaretDown size={10} weight="bold" style={{ color: 'var(--text-tertiary)', transition: 'transform 0.2s', transform: open ? 'rotate(180deg)' : 'rotate(0deg)' }} />
+        </button>
+        {open && (
+          <div style={{
+            position: 'absolute', top: '100%', left: 0, zIndex: 100, marginTop: '4px',
+            minWidth: '160px', padding: '4px',
+            borderRadius: 'var(--radius-md)', border: '1px solid var(--border-strong)',
+            backgroundColor: '#1a1a2e', boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+            display: 'flex', flexDirection: 'column', gap: '1px',
+          }}>
+            <PresetQuickOption label="默认" isActive={!activePresetId} onClick={() => { applyPreset(null); setOpen(false) }} />
+            {presets.map((p) => (
+              <PresetQuickOption key={p.id} label={p.name} isActive={p.id === activePresetId} onClick={() => { applyPreset(p.id); setOpen(false) }} />
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* 同步按钮 */}
       <button
-        onClick={() => setOpen(!open)}
+        onClick={handleSync}
+        title="同步设置：将当前方案的清晰度、格式、弹幕/字幕等设置应用到下载页"
         style={{
-          display: 'inline-flex', alignItems: 'center', gap: '5px',
-          height: '28px', padding: '0 10px',
+          display: 'inline-flex', alignItems: 'center', gap: '3px',
+          height: '28px', padding: '0 8px',
           borderRadius: 'var(--radius-md)',
-          border: `1px solid ${open ? 'var(--color-accent)' : 'var(--border-subtle)'}`,
+          border: '1px solid var(--border-subtle)',
           backgroundColor: 'var(--surface-default)',
-          color: 'var(--text-secondary)',
+          color: 'var(--text-tertiary)',
           fontSize: '12px', cursor: 'pointer', fontFamily: 'inherit',
+          transition: 'border-color 0.15s, color 0.15s',
         }}
+        onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--color-accent)'; e.currentTarget.style.color = 'var(--color-accent)' }}
+        onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--border-subtle)'; e.currentTarget.style.color = 'var(--text-tertiary)' }}
       >
-        方案: <span style={{ color: activePresetId ? 'var(--color-accent)' : 'var(--text-secondary)', fontWeight: activePresetId ? 600 : 400 }}>{activeName}</span>
-        <CaretDown size={10} weight="bold" style={{ color: 'var(--text-tertiary)', transition: 'transform 0.2s', transform: open ? 'rotate(180deg)' : 'rotate(0deg)' }} />
+        🔄 同步
       </button>
-      {open && (
-        <div style={{
-          position: 'absolute', top: '100%', left: 0, zIndex: 100, marginTop: '4px',
-          minWidth: '160px', padding: '4px',
-          borderRadius: 'var(--radius-md)', border: '1px solid var(--border-strong)',
-          backgroundColor: '#1a1a2e', boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
-          display: 'flex', flexDirection: 'column', gap: '1px',
-        }}>
-          <PresetQuickOption label="默认" isActive={!activePresetId} onClick={() => { applyPreset(null); setOpen(false) }} />
-          {presets.map((p) => (
-            <PresetQuickOption key={p.id} label={p.name} isActive={p.id === activePresetId} onClick={() => { applyPreset(p.id); setOpen(false) }} />
-          ))}
-        </div>
-      )}
     </div>
   )
 }
