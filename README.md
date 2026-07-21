@@ -4,7 +4,7 @@ B 站视频下载工具 — 浏览器直接使用 + Electron 桌面版
 
 [![Test](https://img.shields.io/badge/tests-55%20passed-brightgreen)](https://github.com/Luo-Feng6/bibilidown)
 [![TypeScript](https://img.shields.io/badge/TypeScript-zero%20errors-blue)](https://github.com/Luo-Feng6/bibilidown)
-[![Version](https://img.shields.io/badge/version-v7.7.0-9cf)](https://github.com/Luo-Feng6/bibilidown/releases)
+[![Version](https://img.shields.io/badge/version-v7.7.3-9cf)](https://github.com/Luo-Feng6/bibilidown/releases)
 [![License](https://img.shields.io/badge/license-Apache--2.0-orange)](LICENSE)
 
 ## 两种使用方式

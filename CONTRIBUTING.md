@@ -27,7 +27,7 @@ npx tsc --noEmit         # 确保零错误
 |------|------|
 | `src/services/` | B 站 API · 下载引擎 · 登录 · Cookie · WBI 签名 |
 | `src/stores/` | Zustand 状态管理（8 个 Store） |
-| `src/components/` | UI 组件（12 个） |
+| `src/components/` | UI 组件（20 个） |
 | `src/pages/` | 页面组件（3 个：设置 · 历史 · 关于） |
 | `src/utils/` | 工具函数（剪贴板 · 环境检测） |
 | `electron/` | Electron 主进程 + Preload |
