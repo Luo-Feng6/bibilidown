@@ -411,7 +411,7 @@ function ChoiceButton({
         e.currentTarget.style.background = 'var(--surface-elevated)'
       }}
     >
-      <span style={{ color: 'var(--text-secondary)' }}>{icon}</span>
+      <span style={{ color: 'var(--color-accent)' }}>{icon}</span>
       <div>
         <b>{label}</b>
         <br />
