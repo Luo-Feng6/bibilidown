@@ -1,6 +1,6 @@
 {
   "name": "bibilidown",
-  "version": "7.7.2",
+  "version": "7.7.3",
   "description": "BibiliDown — Modern Bilibili Video Downloader",
   "type": "module",
   "main": "electron/main.cjs",

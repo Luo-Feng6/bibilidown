@@ -232,7 +232,6 @@ export default function DownloadPanel({
           <span style={{
             marginTop: '6px', fontSize: '10px', fontWeight: 600,
             color: 'var(--color-accent)',
-            writingMode: 'vertical-rl',
           }}>
             {summary.active.length}
           </span>
@@ -241,7 +240,6 @@ export default function DownloadPanel({
           <span style={{
             marginTop: '4px', fontSize: '10px', fontWeight: 600,
             color: 'var(--color-error)',
-            writingMode: 'vertical-rl',
           }}>
             {summary.failed.length}
           </span>

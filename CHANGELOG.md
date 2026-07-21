@@ -1,5 +1,9 @@
 # 更新日志
 
+## v7.7.3 (2026-07-22)
+
+- 🐛 **折叠下载面板徽章修复** — 去掉 `writingMode: vertical-rl`（对阿拉伯数字无效），折叠态数字徽章正常横排显示
+
 ## v7.7.2 (2026-07-22)
 
 - 🔧 **Electron API_BASE 修复** — 新建 `api-base.ts` 统一入口，生产模式自动切换 `https://api.bilibili.com` 绝对 URL，解决 file:// 协议下代理失效
